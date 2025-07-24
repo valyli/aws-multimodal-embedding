@@ -5,12 +5,16 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
+    aws_s3_notifications as s3n,
+    aws_opensearchserverless as opensearch,
+    aws_iam as iam,
     Duration,
     RemovalPolicy
 )
 from constructs import Construct
 import sys
 import os
+import json
 
 # 添加配置路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
@@ -68,6 +72,145 @@ class CloudscapeStack(Stack):
         
         # 给Lambda授权访问上传存储桶
         upload_bucket.grant_write(lambda_function)
+        
+        # 创建OpenSearch Layer
+        opensearch_layer = _lambda.LayerVersion(
+            self, "OpenSearchLayer",
+            code=_lambda.Code.from_asset("../backend/layers/opensearch_layer"),
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
+            layer_version_name=f"{SERVICE_PREFIX}-opensearch"
+        )
+        
+        # Embedding处理Lambda
+        embedding_function = _lambda.Function(
+            self, "EmbeddingFunction",
+            function_name=f"{SERVICE_PREFIX}-embedding",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=_lambda.Code.from_asset("../backend/embedding"),
+            timeout=Duration.minutes(5),
+            memory_size=1024,
+            layers=[opensearch_layer]
+        )
+        
+        # 搜索Lambda
+        search_function = _lambda.Function(
+            self, "SearchFunction",
+            function_name=f"{SERVICE_PREFIX}-search",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=_lambda.Code.from_asset("../backend/search"),
+            timeout=Duration.minutes(2),
+            memory_size=1024,
+            layers=[opensearch_layer]
+        )
+        
+        # OpenSearch Serverless安全策略
+        encryption_policy = opensearch.CfnSecurityPolicy(
+            self, "EncryptionPolicy",
+            name="mm-embed-vector-encrypt",
+            type="encryption",
+            policy=json.dumps({
+                "Rules": [{
+                    "ResourceType": "collection",
+                    "Resource": ["collection/mm-embed-vector"]
+                }],
+                "AWSOwnedKey": True
+            })
+        )
+        
+        network_policy = opensearch.CfnSecurityPolicy(
+            self, "NetworkPolicy",
+            name="mm-embed-vector-network",
+            type="network",
+            policy=json.dumps([{
+                "Rules": [{
+                    "ResourceType": "collection",
+                    "Resource": ["collection/mm-embed-vector"]
+                }],
+                "AllowFromPublic": True
+            }])
+        )
+        
+        # OpenSearch Serverless集合
+        opensearch_collection = opensearch.CfnCollection(
+            self, "OpenSearchCollection",
+            name="mm-embed-vector",
+            type="VECTORSEARCH"
+        )
+        
+        opensearch_collection.add_dependency(encryption_policy)
+        opensearch_collection.add_dependency(network_policy)
+        
+        # 数据访问策略
+        data_policy = opensearch.CfnAccessPolicy(
+            self, "DataAccessPolicy",
+            name="mm-embed-vector-access",
+            type="data",
+            policy=json.dumps([{
+                "Rules": [{
+                    "ResourceType": "index",
+                    "Resource": ["index/mm-embed-vector/*"],
+                    "Permission": ["aoss:*"]
+                }, {
+                    "ResourceType": "collection",
+                    "Resource": ["collection/mm-embed-vector"],
+                    "Permission": ["aoss:*"]
+                }],
+                "Principal": [f"arn:aws:iam::{self.account}:root"]
+            }])
+        )
+        
+        data_policy.add_dependency(opensearch_collection)
+        
+        # 为Lambda添加环境变量
+        embedding_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
+        embedding_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        
+        search_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
+        search_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        
+        # 给Embedding Lambda授权
+        # 给Lambda授权
+        for func in [embedding_function, search_function]:
+            func.add_to_role_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["bedrock:InvokeModel"],
+                    resources=["*"]
+                )
+            )
+            
+            func.add_to_role_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["aoss:*"],
+                    resources=["*"]
+                )
+            )
+        
+        upload_bucket.grant_read(embedding_function)
+        upload_bucket.grant_write(search_function)
+        upload_bucket.grant_read(search_function)
+        
+        # S3触发器
+        upload_bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            s3n.LambdaDestination(embedding_function)
+        )
+        
+        # 搜索API
+        search_api = apigateway.LambdaRestApi(
+            self, "SearchApi",
+            rest_api_name=f"{API_GATEWAY_NAME}-search",
+            handler=search_function,
+            proxy=True,
+            default_cors_preflight_options=apigateway.CorsOptions(
+                allow_origins=apigateway.Cors.ALL_ORIGINS,
+                allow_methods=apigateway.Cors.ALL_METHODS,
+                allow_headers=["*"]
+            )
+        )
 
         # CloudFront Origin Access Identity
         oai = cloudfront.OriginAccessIdentity(
@@ -98,14 +241,31 @@ class CloudscapeStack(Stack):
                     origin=origins.RestApiOrigin(api),
                     viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
+                ),
+                "/search/*": cloudfront.BehaviorOptions(
+                    origin=origins.RestApiOrigin(search_api),
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+                    cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
                 )
             }
         )
         
-        # 输出CloudFront域名
+        # 输出信息
         from aws_cdk import CfnOutput
         CfnOutput(
             self, "CloudFrontDomainName",
             value=distribution.distribution_domain_name,
             description="CloudFront Distribution Domain Name"
+        )
+        
+        CfnOutput(
+            self, "OpenSearchEndpoint",
+            value=opensearch_collection.attr_collection_endpoint,
+            description="OpenSearch Serverless Collection Endpoint"
+        )
+        
+        CfnOutput(
+            self, "SearchApiEndpoint",
+            value=search_api.url,
+            description="Search API Gateway Endpoint"
         )
