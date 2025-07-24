@@ -18,7 +18,8 @@ from config.settings import (
     LAMBDA_FUNCTION_NAME,
     API_GATEWAY_NAME,
     S3_BUCKET_NAME,
-    CLOUDFRONT_DISTRIBUTION_NAME
+    CLOUDFRONT_DISTRIBUTION_NAME,
+    SERVICE_PREFIX
 )
 
 class CloudscapeStack(Stack):
@@ -56,6 +57,17 @@ class CloudscapeStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True
         )
+        
+        # 文件上传存储桶
+        upload_bucket = s3.Bucket(
+            self, "UploadBucket",
+            bucket_name=f"{SERVICE_PREFIX}-uploads",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True
+        )
+        
+        # 给Lambda授权访问上传存储桶
+        upload_bucket.grant_write(lambda_function)
 
         # CloudFront Origin Access Identity
         oai = cloudfront.OriginAccessIdentity(

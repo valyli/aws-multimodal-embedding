@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件上传 - Cloudscape Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .upload-area { border: 2px dashed #007dbc; border-radius: 8px; padding: 40px; text-align: center; margin: 20px 0; cursor: pointer; transition: all 0.3s; }
+        .upload-area:hover { border-color: #005a8b; background: #f8f9fa; }
+        .upload-area.dragover { border-color: #28a745; background: #e8f5e9; }
+        .file-input { display: none; }
+        .file-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .result { background: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #007dbc; }
+        .success { border-left-color: #28a745; }
+        .error { border-left-color: #dc3545; }
+        button { background: #007dbc; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #005a8b; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .allowed-types { color: #666; font-size: 14px; margin-top: 10px; }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: #007dbc; text-decoration: none; margin-right: 20px; }
+        .nav a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">← 返回首页</a>
+            <a href="/upload.html">文件上传</a>
+        </div>
+        
+        <h1>📁 文件上传</h1>
+        <p>支持图片和视频文件上传到AWS S3存储</p>
+        
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <div id="uploadText">
+                <h3>点击选择文件或拖拽文件到此处</h3>
+                <div class="allowed-types">
+                    支持格式: PNG, JPEG, JPG, WebP, MP4, MOV
+                </div>
+            </div>
+        </div>
+        
+        <input type="file" id="fileInput" class="file-input" accept=".png,.jpeg,.jpg,.webp,.mp4,.mov">
+        
+        <div id="fileInfo" class="file-info" style="display: none;">
+            <strong>选中文件:</strong> <span id="fileName"></span><br>
+            <strong>文件大小:</strong> <span id="fileSize"></span><br>
+            <strong>文件类型:</strong> <span id="fileType"></span>
+        </div>
+        
+        <button id="uploadBtn" onclick="uploadFile()" disabled>上传文件</button>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://phs8fhnzi4.execute-api.us-east-1.amazonaws.com/prod';
+        const allowedTypes = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov'];
+        let selectedFile = null;
+        
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.querySelector('.upload-area');
+        const fileInfo = document.getElementById('fileInfo');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const result = document.getElementById('result');
+        
+        // 文件选择处理
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // 拖拽处理
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+        
+        function handleFile(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            if (!allowedTypes.includes(ext)) {
+                showResult(`不支持的文件类型。仅支持: ${allowedTypes.join(', ')}`, 'error');
+                return;
+            }
+            
+            selectedFile = file;
+            
+            // 显示文件信息
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            document.getElementById('fileType').textContent = file.type || '未知';
+            fileInfo.style.display = 'block';
+            uploadBtn.disabled = false;
+            
+            hideResult();
+        }
+        
+        async function uploadFile() {
+            if (!selectedFile) return;
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '上传中...';
+            
+            try {
+                // 转换文件为base64
+                const base64Data = await fileToBase64(selectedFile);
+                
+                const response = await fetch(API_BASE + '/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        file: base64Data,
+                        fileName: selectedFile.name,
+                        fileType: selectedFile.type
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showResult(`
+                        <strong>上传成功！</strong><br>
+                        <strong>文件名:</strong> ${data.fileName}<br>
+                        <strong>S3 URI:</strong> <code>${data.s3Uri}</code><br>
+                        <strong>上传时间:</strong> ${new Date(data.uploadTime).toLocaleString()}
+                    `, 'success');
+                } else {
+                    showResult(`上传失败: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`上传失败: ${error.message}`, 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '上传文件';
+            }
+        }
+        
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function showResult(message, type) {
+            result.innerHTML = message;
+            result.className = `result ${type}`;
+            result.style.display = 'block';
+        }
+        
+        function hideResult() {
+            result.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
