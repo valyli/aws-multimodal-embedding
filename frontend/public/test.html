@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudscape Demo - API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .endpoint { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { background: #f5f5f5; padding: 10px; margin-top: 10px; border-radius: 3px; }
+        button { background: #007dbc; color: white; border: none; padding: 8px 16px; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a8b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Cloudscape Demo API 测试</h1>
+        
+        <div class="endpoint">
+            <h3>主页端点</h3>
+            <button onclick="testEndpoint('/', 'result1')">测试 /</button>
+            <div id="result1" class="result"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>健康检查</h3>
+            <button onclick="testEndpoint('/health', 'result2')">测试 /health</button>
+            <div id="result2" class="result"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>数据API</h3>
+            <button onclick="testEndpoint('/api/data', 'result3')">测试 /api/data</button>
+            <div id="result3" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://phs8fhnzi4.execute-api.us-east-1.amazonaws.com/prod';
+        
+        async function testEndpoint(path, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.innerHTML = '加载中...';
+            
+            try {
+                const response = await fetch(API_BASE + path);
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <strong>状态:</strong> ${response.status}<br>
+                    <strong>响应:</strong><br>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<strong>错误:</strong> ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

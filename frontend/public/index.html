@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudscape Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .endpoint { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 3px; font-family: monospace; }
+        button { background: #007dbc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        button:hover { background: #005a8b; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        h1 { color: #333; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Cloudscape Demo</h1>
+        <p style="text-align: center; color: #666;">AWS无服务器架构演示 - API Gateway + Lambda + CloudFront</p>
+        
+        <div class="endpoint">
+            <h3>🏠 主页端点</h3>
+            <button onclick="testEndpoint('/', 'result1')">测试 /</button>
+            <div id="result1" class="result">点击按钮测试API</div>
+        </div>
+
+        <div class="endpoint">
+            <h3>❤️ 健康检查</h3>
+            <button onclick="testEndpoint('/health', 'result2')">测试 /health</button>
+            <div id="result2" class="result">点击按钮测试API</div>
+        </div>
+
+        <div class="endpoint">
+            <h3>📊 数据API</h3>
+            <button onclick="testEndpoint('/api/data', 'result3')">测试 /api/data</button>
+            <div id="result3" class="result">点击按钮测试API</div>
+        </div>
+
+        <div style="margin-top: 30px; padding: 15px; background: #e9ecef; border-radius: 5px;">
+            <h4>📝 说明</h4>
+            <p>• 所有API通过AWS API Gateway + Lambda实现</p>
+            <p>• 前端通过CloudFront CDN分发</p>
+            <p>• 完全无服务器架构，无EC2暴露</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://phs8fhnzi4.execute-api.us-east-1.amazonaws.com/prod';
+        
+        async function testEndpoint(path, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.innerHTML = '<span style="color: #007dbc;">⏳ 加载中...</span>';
+            
+            try {
+                const response = await fetch(API_BASE + path);
+                const data = await response.json();
+                const statusClass = response.ok ? 'success' : 'error';
+                resultDiv.innerHTML = `
+                    <div class="${statusClass}">
+                        <strong>状态:</strong> ${response.status} ${response.statusText}<br>
+                        <strong>响应:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error"><strong>错误:</strong> ${error.message}</div>`;
+            }
+        }
+        
+        // 页面加载时自动测试主页
+        window.onload = () => testEndpoint('/', 'result1');
+    </script>
+</body>
+</html>
