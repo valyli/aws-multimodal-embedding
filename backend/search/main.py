@@ -164,12 +164,26 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
         
         print(f"Starting async invoke with output to: {output_s3_uri}")
         
-        # 发起异步调用
-        start_resp = bedrock_client.start_async_invoke(
-            modelId=MARENG0_MODEL_ID,
-            modelInput=model_input,
-            outputDataConfig=output_data_config
-        )
+        # 发起异步调用，带重试机制
+        max_retries = 5
+        retry_delay = 1
+        
+        for retry in range(max_retries):
+            try:
+                start_resp = bedrock_client.start_async_invoke(
+                    modelId=MARENG0_MODEL_ID,
+                    modelInput=model_input,
+                    outputDataConfig=output_data_config
+                )
+                break
+            except Exception as e:
+                if "ThrottlingException" in str(e) and retry < max_retries - 1:
+                    print(f"Throttling detected, retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                    continue
+                else:
+                    raise e
             
         invocation_arn = start_resp["invocationArn"]
         print("Invocation ARN:", invocation_arn)

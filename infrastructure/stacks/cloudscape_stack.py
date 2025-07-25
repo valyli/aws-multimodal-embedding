@@ -37,22 +37,30 @@ class CloudscapeStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="main.handler",
             code=_lambda.Code.from_asset("../backend/app"),
-            timeout=Duration.seconds(30),
+            timeout=Duration.seconds(129),
             memory_size=512
         )
 
-        # API Gateway
-        api = apigateway.LambdaRestApi(
+        # API Gateway使用5分钟超时
+        api = apigateway.RestApi(
             self, "ApiGateway",
             rest_api_name=API_GATEWAY_NAME,
-            handler=lambda_function,
-            proxy=True,
             default_cors_preflight_options=apigateway.CorsOptions(
-                allow_origins=apigateway.Cors.ALL_ORIGINS,
-                allow_methods=apigateway.Cors.ALL_METHODS,
-                allow_headers=["*"]
+                allow_origins=["*"],
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                allow_headers=["*"],
+                allow_credentials=True
             )
         )
+        
+        api_integration = apigateway.LambdaIntegration(
+            lambda_function,
+            proxy=True,
+            timeout=Duration.seconds(129)  # 129秒超时
+        )
+        
+        api_resource = api.root.add_resource("{proxy+}")
+        api_resource.add_method("ANY", api_integration)
 
         # S3存储桶（私有）
         frontend_bucket = s3.Bucket(
@@ -185,6 +193,24 @@ class CloudscapeStack(Stack):
                 )
             )
             
+            # 给Lambda角色添加S3完整访问权限
+            func.add_to_role_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation"
+                    ],
+                    resources=[
+                        upload_bucket.bucket_arn,
+                        f"{upload_bucket.bucket_arn}/*"
+                    ]
+                )
+            )
+            
             func.add_to_role_policy(
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,
@@ -254,6 +280,12 @@ class CloudscapeStack(Stack):
         search_api = apigateway.RestApi(
             self, "SearchApi",
             rest_api_name=f"{API_GATEWAY_NAME}-search",
+            cloud_watch_role=True,
+            deploy_options=apigateway.StageOptions(
+                logging_level=apigateway.MethodLoggingLevel.INFO,
+                data_trace_enabled=True,
+                metrics_enabled=True
+            ),
             default_cors_preflight_options=apigateway.CorsOptions(
                 allow_origins=["*"],
                 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -268,6 +300,10 @@ class CloudscapeStack(Stack):
             timeout=Duration.seconds(129)
         )
         
+        # 在根路径添加方法
+        search_api.root.add_method("ANY", search_integration)
+        
+        # 在proxy路径添加方法
         search_resource = search_api.root.add_resource("{proxy+}")
         search_resource.add_method("ANY", search_integration)
         

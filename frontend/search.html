@@ -278,13 +278,20 @@
                     fileType: selectedFile.type
                 };
 
+                // 创建带超时的AbortController
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 150000); // 150秒超时
+                
                 const response = await fetch('https://239c7yyacl.execute-api.us-east-1.amazonaws.com/prod/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(requestData)
+                    body: JSON.stringify(requestData),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
 
                 const result = await response.json();
 
