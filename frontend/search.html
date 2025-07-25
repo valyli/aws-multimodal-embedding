@@ -225,15 +225,20 @@
             const searchType = document.querySelector('input[name="searchType"]:checked').value;
             const uploadArea = document.getElementById('uploadArea');
             const textArea = document.getElementById('textArea');
+            const preview = document.getElementById('preview');
             const searchBtn = document.getElementById('searchBtn');
             
             if (searchType === 'text') {
                 uploadArea.style.display = 'none';
                 textArea.style.display = 'block';
+                preview.style.display = 'none';  // 隐藏图片预览
                 searchBtn.disabled = document.getElementById('queryText').value.trim() === '';
             } else {
                 uploadArea.style.display = 'block';
                 textArea.style.display = 'none';
+                if (selectedFile) {
+                    preview.style.display = 'block';  // 显示图片预览
+                }
                 searchBtn.disabled = !selectedFile;
             }
         }
