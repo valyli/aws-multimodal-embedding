@@ -250,18 +250,28 @@ class CloudscapeStack(Stack):
             s3n.LambdaDestination(embedding_function)
         )
         
-        # 搜索API
-        search_api = apigateway.LambdaRestApi(
+        # 搜索API使用129秒超时
+        search_api = apigateway.RestApi(
             self, "SearchApi",
             rest_api_name=f"{API_GATEWAY_NAME}-search",
-            handler=search_function,
-            proxy=True,
             default_cors_preflight_options=apigateway.CorsOptions(
-                allow_origins=apigateway.Cors.ALL_ORIGINS,
-                allow_methods=apigateway.Cors.ALL_METHODS,
-                allow_headers=["*"]
+                allow_origins=["*"],
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                allow_headers=["*"],
+                allow_credentials=True
             )
         )
+        
+        search_integration = apigateway.LambdaIntegration(
+            search_function,
+            proxy=True,
+            timeout=Duration.seconds(129)
+        )
+        
+        search_resource = search_api.root.add_resource("{proxy+}")
+        search_resource.add_method("ANY", search_integration)
+        
+
 
         # CloudFront Origin Access Identity
         oai = cloudfront.OriginAccessIdentity(
