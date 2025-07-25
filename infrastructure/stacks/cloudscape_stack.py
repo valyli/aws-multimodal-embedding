@@ -8,6 +8,9 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     aws_opensearchserverless as opensearch,
     aws_iam as iam,
+    aws_dynamodb as dynamodb,
+    aws_sqs as sqs,
+    aws_lambda_event_sources as lambda_event_sources,
     Duration,
     RemovalPolicy
 )
@@ -81,6 +84,22 @@ class CloudscapeStack(Stack):
         # 给Lambda授权访问上传存储桶
         upload_bucket.grant_write(lambda_function)
         
+        # DynamoDB表存储搜索任务状态
+        search_table = dynamodb.Table(
+            self, "SearchTable",
+            table_name=f"{SERVICE_PREFIX}-search-tasks",
+            partition_key=dynamodb.Attribute(name="search_id", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        
+        # SQS队列处理搜索任务
+        search_queue = sqs.Queue(
+            self, "SearchQueue",
+            queue_name=f"{SERVICE_PREFIX}-search-queue",
+            visibility_timeout=Duration.minutes(10)
+        )
+        
         # 创建OpenSearch Layer
         opensearch_layer = _lambda.LayerVersion(
             self, "OpenSearchLayer",
@@ -101,16 +120,34 @@ class CloudscapeStack(Stack):
             layers=[opensearch_layer]
         )
         
-        # 搜索Lambda
-        search_function = _lambda.Function(
-            self, "SearchFunction",
-            function_name=f"{SERVICE_PREFIX}-search",
+        # 搜索API Lambda - 快速返回搜索ID
+        search_api_function = _lambda.Function(
+            self, "SearchApiFunction",
+            function_name=f"{SERVICE_PREFIX}-search-api",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="main.handler",
-            code=_lambda.Code.from_asset("../backend/search"),
-            timeout=Duration.seconds(129),
+            code=_lambda.Code.from_asset("../backend/search_api"),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={
+                "SEARCH_TABLE_NAME": search_table.table_name,
+                "SEARCH_QUEUE_URL": search_queue.queue_url
+            }
+        )
+        
+        # 搜索处理Lambda - 异步处理
+        search_worker_function = _lambda.Function(
+            self, "SearchWorkerFunction",
+            function_name=f"{SERVICE_PREFIX}-search-worker",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=_lambda.Code.from_asset("../backend/search_worker"),
+            timeout=Duration.minutes(10),
             memory_size=1024,
-            layers=[opensearch_layer]
+            layers=[opensearch_layer],
+            environment={
+                "SEARCH_TABLE_NAME": search_table.table_name
+            }
         )
         
         # OpenSearch Serverless安全策略
@@ -175,12 +212,25 @@ class CloudscapeStack(Stack):
         embedding_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         embedding_function.add_environment("OPENSEARCH_INDEX", "embeddings")
         
-        search_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
-        search_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        search_worker_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
+        search_worker_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        
+        # search_function已经被重命名为search_api_function和search_worker_function
         
         # 给Embedding Lambda授权
+        # 给DynamoDB和SQS授权
+        search_table.grant_read_write_data(search_api_function)
+        search_table.grant_read_write_data(search_worker_function)
+        search_queue.grant_send_messages(search_api_function)
+        search_queue.grant_consume_messages(search_worker_function)
+        
+        # SQS触发器
+        search_worker_function.add_event_source(
+            lambda_event_sources.SqsEventSource(search_queue, batch_size=1)
+        )
+        
         # 给Lambda授权
-        for func in [embedding_function, search_function]:
+        for func in [embedding_function, search_api_function, search_worker_function]:
             func.add_to_role_policy(
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,
@@ -238,8 +288,10 @@ class CloudscapeStack(Stack):
             )
         
         upload_bucket.grant_read(embedding_function)
-        upload_bucket.grant_write(search_function)
-        upload_bucket.grant_read(search_function)
+        upload_bucket.grant_write(search_api_function)
+        upload_bucket.grant_read(search_api_function)
+        upload_bucket.grant_write(search_worker_function)
+        upload_bucket.grant_read(search_worker_function)
         
         # 为Bedrock创建服务角色
         bedrock_service_role = iam.Role(
@@ -267,7 +319,7 @@ class CloudscapeStack(Stack):
         )
         
         # 为Lambda添加Bedrock服务角色ARN环境变量
-        for func in [embedding_function, search_function]:
+        for func in [embedding_function, search_worker_function]:
             func.add_environment("BEDROCK_SERVICE_ROLE_ARN", bedrock_service_role.role_arn)
         
         # S3触发器
@@ -276,7 +328,7 @@ class CloudscapeStack(Stack):
             s3n.LambdaDestination(embedding_function)
         )
         
-        # 搜索API使用129秒超时
+        # 搜索API使用129秒超时，配置CORS支持直接访问
         search_api = apigateway.RestApi(
             self, "SearchApi",
             rest_api_name=f"{API_GATEWAY_NAME}-search",
@@ -289,15 +341,15 @@ class CloudscapeStack(Stack):
             default_cors_preflight_options=apigateway.CorsOptions(
                 allow_origins=["*"],
                 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                allow_headers=["*"],
-                allow_credentials=True
+                allow_headers=["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key", "X-Amz-Security-Token"],
+                allow_credentials=False
             )
         )
         
         search_integration = apigateway.LambdaIntegration(
-            search_function,
+            search_api_function,
             proxy=True,
-            timeout=Duration.seconds(129)
+            timeout=Duration.seconds(30)
         )
         
         # 在根路径添加方法
@@ -338,12 +390,8 @@ class CloudscapeStack(Stack):
                     origin=origins.RestApiOrigin(api),
                     viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
-                ),
-                "/search/*": cloudfront.BehaviorOptions(
-                    origin=origins.RestApiOrigin(search_api),
-                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-                    cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
                 )
+                # 移除/search/*行为，直接访问API Gateway
             }
         )
         
