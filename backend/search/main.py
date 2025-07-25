@@ -56,9 +56,10 @@ def handler(event, context):
         
         print(f"Temporarily stored file: s3://{UPLOAD_BUCKET}/{temp_key}")
         
-        # 生成查询图片的embedding
+        # 根据文件类型生成embedding
         temp_s3_uri = f"s3://{UPLOAD_BUCKET}/{temp_key}"
-        query_embedding = get_embedding_from_marengo('image', temp_s3_uri, UPLOAD_BUCKET)
+        media_type = 'video' if ext in ['mp4', 'mov'] else 'image'
+        query_embedding = get_embedding_from_marengo(media_type, temp_s3_uri, UPLOAD_BUCKET)
         
         # 删除临时文件
         s3_client.delete_object(Bucket=UPLOAD_BUCKET, Key=temp_key)
@@ -174,7 +175,7 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
         print("Invocation ARN:", invocation_arn)
         
         # 轮询结果
-        max_attempts = 60  # 最多等待5分钟
+        max_attempts = 24  # 最多等待2分钟
         attempt = 0
         
         while attempt < max_attempts:
@@ -205,7 +206,10 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                         
                 elif res["status"] in ("Failed", "Cancelled"):
                     error_msg = res.get("failureMessage", "Unknown error")
-                    raise ValueError(f"Async invoke failed: {error_msg}")
+                    if "Unprocessable video" in error_msg:
+                        raise ValueError(f"视频格式不支持: {error_msg}. 请尝试使用标准的MP4格式，时长不超过10分钟")
+                    else:
+                        raise ValueError(f"Async invoke failed: {error_msg}")
                     
                 # 等待5秒后重试
                 time.sleep(5)

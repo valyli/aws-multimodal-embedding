@@ -100,7 +100,7 @@ class CloudscapeStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="main.handler",
             code=_lambda.Code.from_asset("../backend/search"),
-            timeout=Duration.minutes(2),
+            timeout=Duration.seconds(129),
             memory_size=1024,
             layers=[opensearch_layer]
         )
