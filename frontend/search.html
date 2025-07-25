@@ -162,9 +162,9 @@
             <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
                 选择图片文件
             </button>
-            <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+            <input type="file" id="fileInput" accept="image/*,video/*" onchange="handleFileSelect(event)">
             <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                支持格式：PNG, JPEG, JPG, WEBP
+                支持格式：PNG, JPEG, JPG, WEBP, MP4, MOV
             </p>
         </div>
         
@@ -219,9 +219,9 @@
 
         function handleFile(file) {
             // 检查文件类型
-            const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+            const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'video/mp4', 'video/quicktime'];
             if (!allowedTypes.includes(file.type)) {
-                showStatus('请选择支持的图片格式（PNG, JPEG, JPG, WEBP）', 'error');
+                showStatus('请选择支持的文件格式（PNG, JPEG, JPG, WEBP, MP4, MOV）', 'error');
                 return;
             }
 
@@ -236,14 +236,22 @@
             // 显示预览
             const reader = new FileReader();
             reader.onload = function(e) {
-                document.getElementById('previewImg').src = e.target.result;
+                const previewElement = document.getElementById('previewImg');
+                if (file.type.startsWith('video/')) {
+                    // 显示视频预览
+                    previewElement.outerHTML = `<video id="previewImg" controls style="max-width: 300px; max-height: 300px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><source src="${e.target.result}" type="${file.type}"></video>`;
+                } else {
+                    // 显示图片预览
+                    previewElement.src = e.target.result;
+                }
                 document.getElementById('fileName').textContent = file.name;
                 document.getElementById('preview').style.display = 'block';
                 document.getElementById('searchBtn').disabled = false;
             };
             reader.readAsDataURL(file);
             
-            showStatus('图片已选择，点击搜索按钮开始查找相似图片', 'info');
+            const fileTypeText = file.type.startsWith('video/') ? '视频' : '图片';
+            showStatus(`${fileTypeText}已选择，点击搜索按钮开始查找相似内容`, 'info');
         }
 
         async function searchSimilar() {
@@ -256,7 +264,8 @@
             searchBtn.disabled = true;
             searchBtn.textContent = '🔍 搜索中...';
             
-            showStatus('正在处理图片并搜索相似内容...', 'info');
+            const fileTypeText = selectedFile.type.startsWith('video/') ? '视频' : '图片';
+            showStatus(`正在处理${fileTypeText}并搜索相似内容...`, 'info');
 
             try {
                 // 转换为base64
@@ -279,7 +288,7 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    showStatus(`搜索完成！找到 ${result.results.length} 个相似图片`, 'success');
+                    showStatus(`搜索完成！找到 ${result.results.length} 个相似内容`, 'success');
                     displayResults(result.results);
                 } else {
                     showStatus(`搜索失败: ${result.error}`, 'error');
@@ -309,21 +318,28 @@
             const resultsList = document.getElementById('resultsList');
             
             if (results.length === 0) {
-                resultsList.innerHTML = '<p>未找到相似的图片</p>';
+                resultsList.innerHTML = '<p>未找到相似的内容</p>';
             } else {
-                resultsList.innerHTML = results.map(result => `
-                    <div class="result-item">
-                        <div class="result-image">
-                            <img src="${result.image_url}" alt="相似图片" style="max-width: 150px; max-height: 150px; border-radius: 5px;">
+                resultsList.innerHTML = results.map(result => {
+                    const isVideo = ['mp4', 'mov'].includes(result.file_type.toLowerCase());
+                    const mediaElement = isVideo ? 
+                        `<video controls style="max-width: 150px; max-height: 150px; border-radius: 5px;"><source src="${result.image_url}" type="video/${result.file_type.toLowerCase() === 'mov' ? 'quicktime' : result.file_type.toLowerCase()}"></video>` :
+                        `<img src="${result.image_url}" alt="相似图片" style="max-width: 150px; max-height: 150px; border-radius: 5px;">`;
+                    
+                    return `
+                        <div class="result-item">
+                            <div class="result-image">
+                                ${mediaElement}
+                            </div>
+                            <div class="result-info">
+                                <div class="result-score">相似度: ${(result.score * 100).toFixed(1)}%</div>
+                                <div><strong>文件:</strong> ${result.s3_uri.split('/').pop()}</div>
+                                <div><strong>类型:</strong> ${result.file_type.toUpperCase()}</div>
+                                <div><strong>时间:</strong> ${new Date(result.timestamp).toLocaleString()}</div>
+                            </div>
                         </div>
-                        <div class="result-info">
-                            <div class="result-score">相似度: ${(result.score * 100).toFixed(1)}%</div>
-                            <div><strong>文件:</strong> ${result.s3_uri.split('/').pop()}</div>
-                            <div><strong>类型:</strong> ${result.file_type}</div>
-                            <div><strong>时间:</strong> ${new Date(result.timestamp).toLocaleString()}</div>
-                        </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
             
             resultsDiv.style.display = 'block';

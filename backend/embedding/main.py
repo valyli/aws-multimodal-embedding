@@ -4,6 +4,7 @@ import base64
 from datetime import datetime
 import uuid
 import os
+import time
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
 # 初始化客户端
@@ -13,7 +14,8 @@ bedrock_client = boto3.client('bedrock-runtime')
 # 配置
 OPENSEARCH_ENDPOINT = os.environ.get('OPENSEARCH_ENDPOINT')
 OPENSEARCH_INDEX = os.environ.get('OPENSEARCH_INDEX', 'embeddings')
-BEDROCK_MODEL_ID = 'amazon.titan-embed-image-v1'
+TITAN_MODEL_ID = 'amazon.titan-embed-image-v1'
+MARENG0_MODEL_ID = 'twelvelabs.marengo-embed-2-7-v1:0'
 VECTOR_DIMENSION = 1024
 
 def handler(event, context):
@@ -33,16 +35,21 @@ def handler(event, context):
             
             print(f"Processing file: {s3_uri}")
             
+            # 跳过Bedrock输出文件
+            if 'bedrock-outputs/' in object_key or 'temp/' in object_key:
+                print(f"Skipping Bedrock output or temp file: {object_key}")
+                continue
+            
             # 判断文件类型
             file_ext = object_key.split('.')[-1].lower()
             
             if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
-                # 图片文件 - 使用Titan Multimodal Embeddings
-                embedding = generate_image_embedding(bucket_name, object_key)
+                # 图片文件 - 使用Marengo模型
+                embedding = get_embedding_from_marengo('image', s3_uri, bucket_name)
                 store_embedding(opensearch_client, s3_uri, embedding, file_ext)
             elif file_ext in ['mp4', 'mov']:
-                # 视频文件 - 生成占位符embedding
-                embedding = generate_video_embedding()
+                # 视频文件 - 使用Marengo模型
+                embedding = get_embedding_from_marengo('video', s3_uri, bucket_name)
                 store_embedding(opensearch_client, s3_uri, embedding, file_ext)
             else:
                 print(f"Unsupported file type: {file_ext}")
@@ -110,40 +117,128 @@ def create_index_if_not_exists(client):
         client.indices.create(OPENSEARCH_INDEX, body=index_body)
         print(f"Created index: {OPENSEARCH_INDEX}")
 
-def generate_image_embedding(bucket_name, object_key):
+def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
     """
-    使用Bedrock Titan生成图片Embedding
+    使用 Twelvelabs Marengo 模型获取嵌入向量
     """
-    # 从S3获取图片
-    response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
-    image_content = response['Body'].read()
-    
-    # 将图片转换为base64
-    image_base64 = base64.b64encode(image_content).decode('utf-8')
-    
-    # 调用Bedrock API
-    request_body = {
-        "inputImage": image_base64,
-        "embeddingConfig": {
-            "outputEmbeddingLength": VECTOR_DIMENSION
+    try:
+        # 获取账户ID作为bucket owner
+        sts_client = boto3.client('sts')
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        # 为输出结果生成一个唯一的S3路径
+        output_key = f"bedrock-outputs/{uuid.uuid4()}/result.json"
+        output_s3_uri = f"s3://{bucket_name}/{output_key}"
+        
+        print(f"media_type: {media_type}, s3_uri: {s3_uri}")
+        
+        # 构建模型输入
+        if media_type == "image":
+            model_input = {
+                "inputType": "image",
+                "mediaSource": {
+                    "s3Location": {
+                        "uri": s3_uri,
+                        "bucketOwner": account_id
+                    }
+                }
+            }
+        elif media_type == "video":
+            model_input = {
+                "inputType": "video",
+                "mediaSource": {
+                    "s3Location": {
+                        "uri": s3_uri,
+                        "bucketOwner": account_id
+                    }
+                }
+            }
+        else:
+            raise ValueError(f"Unsupported media type: {media_type}")
+            
+        # 构建输出数据配置
+        output_data_config = {
+            "s3OutputDataConfig": {
+                "s3Uri": output_s3_uri
+            }
         }
-    }
-    
-    response = bedrock_client.invoke_model(
-        modelId=BEDROCK_MODEL_ID,
-        body=json.dumps(request_body),
-        contentType='application/json'
-    )
-    
-    response_body = json.loads(response['body'].read())
-    return response_body['embedding']
+        
+        print(f"Starting async invoke with output to: {output_s3_uri}")
+        
+        # 发起异步调用
+        start_resp = bedrock_client.start_async_invoke(
+            modelId=MARENG0_MODEL_ID,
+            modelInput=model_input,
+            outputDataConfig=output_data_config
+        )
+            
+        invocation_arn = start_resp["invocationArn"]
+        print("Invocation ARN:", invocation_arn)
+        
+        # 轮询结果
+        max_attempts = 60  # 最多等待5分钟
+        attempt = 0
+        
+        while attempt < max_attempts:
+            try:
+                res = bedrock_client.get_async_invoke(invocationArn=invocation_arn)
+                print(f"Status (attempt {attempt + 1}): {res['status']}")
+                
+                if res["status"] == "Completed":
+                    # 从实际输出路径读取结果
+                    if "outputDataConfig" in res and "s3OutputDataConfig" in res["outputDataConfig"]:
+                        actual_output_s3_uri = res["outputDataConfig"]["s3OutputDataConfig"]["s3Uri"]
+                        print(f"Using actual output S3 URI: {actual_output_s3_uri}")
 
-def generate_video_embedding():
+                        alt_bucket, alt_prefix = extract_s3_uri(actual_output_s3_uri)
+                        output_key = alt_prefix + "/output.json" if alt_prefix else "output.json"
+
+                        try:
+                            output_resp = s3_client.get_object(Bucket=alt_bucket, Key=output_key)
+                            output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
+                            print("output_json", output_json)
+                            if "embedding" in output_json["data"][0]:
+                                return output_json["data"][0]["embedding"]
+                            else:
+                                raise ValueError("No embedding found in output.json")
+                        except Exception as s3_error:
+                            print(f"Failed to read output.json from path: {output_key}")
+                            raise s3_error
+                        
+                elif res["status"] in ("Failed", "Cancelled"):
+                    error_msg = res.get("failureMessage", "Unknown error")
+                    raise ValueError(f"Async invoke failed: {error_msg}")
+                    
+                # 等待5秒后重试
+                time.sleep(5)
+                attempt += 1
+                
+            except Exception as e:
+                if attempt == max_attempts - 1:
+                    raise e
+                print(f"Error checking status (attempt {attempt + 1}): {str(e)}")
+                time.sleep(5)
+                attempt += 1
+            
+        raise TimeoutError("Async invoke timed out after maximum attempts")
+            
+    except Exception as e:
+        print(f"Error in get_embedding_from_marengo: {str(e)}")
+        raise e
+
+def extract_s3_uri(s3_uri):
     """
-    视频文件处理 - 占位符embedding
+    从S3 URI中提取bucket和prefix
     """
-    import random
-    return [random.random() for _ in range(VECTOR_DIMENSION)]
+    if not s3_uri.startswith('s3://'):
+        raise ValueError(f"Invalid S3 URI: {s3_uri}")
+    
+    path = s3_uri[5:]  # 移除 's3://'
+    parts = path.split('/', 1)
+    bucket = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ''
+    
+    return bucket, prefix
 
 def store_embedding(client, s3_uri, embedding_vector, file_type):
     """

@@ -176,7 +176,11 @@ class CloudscapeStack(Stack):
             func.add_to_role_policy(
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,
-                    actions=["bedrock:InvokeModel"],
+                    actions=[
+                        "bedrock:InvokeModel",
+                        "bedrock:StartAsyncInvoke",
+                        "bedrock:GetAsyncInvoke"
+                    ],
                     resources=["*"]
                 )
             )
@@ -188,10 +192,57 @@ class CloudscapeStack(Stack):
                     resources=["*"]
                 )
             )
+            
+            func.add_to_role_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["sts:GetCallerIdentity"],
+                    resources=["*"]
+                )
+            )
+            
+            func.add_to_role_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "iam:PassRole"
+                    ],
+                    resources=["*"]
+                )
+            )
         
         upload_bucket.grant_read(embedding_function)
         upload_bucket.grant_write(search_function)
         upload_bucket.grant_read(search_function)
+        
+        # 为Bedrock创建服务角色
+        bedrock_service_role = iam.Role(
+            self, "BedrockServiceRole",
+            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            inline_policies={
+                "S3Access": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:DeleteObject",
+                                "s3:ListBucket"
+                            ],
+                            resources=[
+                                upload_bucket.bucket_arn,
+                                f"{upload_bucket.bucket_arn}/*"
+                            ]
+                        )
+                    ]
+                )
+            }
+        )
+        
+        # 为Lambda添加Bedrock服务角色ARN环境变量
+        for func in [embedding_function, search_function]:
+            func.add_environment("BEDROCK_SERVICE_ROLE_ARN", bedrock_service_role.role_arn)
         
         # S3触发器
         upload_bucket.add_event_notification(
