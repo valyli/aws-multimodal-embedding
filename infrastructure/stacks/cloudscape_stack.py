@@ -40,7 +40,7 @@ class CloudscapeStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="main.handler",
             code=_lambda.Code.from_asset("../backend/app"),
-            timeout=Duration.seconds(129),
+            timeout=Duration.seconds(30),
             memory_size=512
         )
 
@@ -58,8 +58,7 @@ class CloudscapeStack(Stack):
         
         api_integration = apigateway.LambdaIntegration(
             lambda_function,
-            proxy=True,
-            timeout=Duration.seconds(129)  # 129秒超时
+            proxy=True
         )
         
         api_resource = api.root.add_resource("{proxy+}")
