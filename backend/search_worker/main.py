@@ -54,39 +54,140 @@ def handler(event, context):
 def process_search(message):
     """处理搜索任务"""
     search_id = message['search_id']
-    file_name = message['file_name']
-    file_type = message['file_type']
-    s3_key = message['s3_key']
+    search_type = message.get('search_type', 'file')  # 'file' 或 'text'
+    search_mode = message.get('search_mode', 'visual-image')  # 搜索模式
     
-    print(f"Processing search for file: {file_name}")
+    print(f"Processing search: type={search_type}, mode={search_mode}")
     
-    # 判断媒体类型
-    file_ext = file_name.split('.')[-1].lower()
-    if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
-        media_type = 'image'
-    elif file_ext in ['mp4', 'mov']:
-        media_type = 'video'
+    if search_type == 'text':
+        # 文本搜索
+        query_text = message['query_text']
+        query_embedding = get_text_embedding_from_marengo(query_text)
+        embedding_field = 'text_embedding'  # 文本搜索使用text_embedding字段
     else:
-        raise ValueError(f"Unsupported file type: {file_ext}")
-    
-    s3_uri = f"s3://{UPLOAD_BUCKET}/{s3_key}"
-    
-    # 获取查询embedding
-    query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET)
+        # 文件搜索
+        file_name = message['file_name']
+        file_type = message['file_type']
+        s3_key = message['s3_key']
+        
+        # 判断媒体类型
+        file_ext = file_name.split('.')[-1].lower()
+        if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
+            media_type = 'image'
+            embedding_field = 'visual_embedding'
+        elif file_ext in ['mp4', 'mov']:
+            media_type = 'video'
+            # 根据搜索模式选择embedding字段
+            if search_mode == 'visual':
+                embedding_field = 'visual_embedding'
+            elif search_mode == 'text':
+                embedding_field = 'text_embedding'
+            elif search_mode == 'audio':
+                embedding_field = 'audio_embedding'
+            else:
+                embedding_field = 'visual_embedding'
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}")
+        
+        s3_uri = f"s3://{UPLOAD_BUCKET}/{s3_key}"
+        # 根据搜索模式生成对应的embedding
+        if search_mode == 'visual':
+            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
+        elif search_mode == 'text':
+            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-text')
+        elif search_mode == 'audio':
+            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'audio')
+        else:
+            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
+        
+        # 清理临时文件
+        try:
+            s3_client.delete_object(Bucket=UPLOAD_BUCKET, Key=s3_key)
+        except:
+            pass
     
     # 在OpenSearch中搜索相似内容
     opensearch_client = get_opensearch_client()
-    search_results = search_similar_embeddings(opensearch_client, query_embedding)
-    
-    # 清理临时文件
-    try:
-        s3_client.delete_object(Bucket=UPLOAD_BUCKET, Key=s3_key)
-    except:
-        pass
+    search_results = search_similar_embeddings(opensearch_client, query_embedding, embedding_field)
     
     return search_results
 
-def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
+def get_text_embedding_from_marengo(text):
+    """使用Marengo模型获取文本embedding（异步调用）"""
+    try:
+        # 获取账户ID
+        sts_client = boto3.client('sts')
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        # 生成输出路径
+        output_key = f"bedrock-outputs/{uuid.uuid4()}/result.json"
+        output_s3_uri = f"s3://{UPLOAD_BUCKET}/{output_key}"
+        
+        # 文本输入
+        model_input = {
+            "inputType": "text",
+            "inputText": text
+        }
+        
+        # 输出配置
+        output_data_config = {
+            "s3OutputDataConfig": {
+                "s3Uri": output_s3_uri
+            }
+        }
+        
+        print(f"Starting async text embedding for: {text[:50]}...")
+        
+        # 异步调用
+        start_resp = bedrock_client.start_async_invoke(
+            modelId=MARENG0_MODEL_ID,
+            modelInput=model_input,
+            outputDataConfig=output_data_config
+        )
+        
+        invocation_arn = start_resp["invocationArn"]
+        print("Text embedding invocation ARN:", invocation_arn)
+        
+        # 轮询结果
+        max_attempts = 30  # 文本处理通常很快
+        attempt = 0
+        
+        while attempt < max_attempts:
+            try:
+                res = bedrock_client.get_async_invoke(invocationArn=invocation_arn)
+                print(f"Text embedding status (attempt {attempt + 1}): {res['status']}")
+                
+                if res["status"] == "Completed":
+                    if "outputDataConfig" in res and "s3OutputDataConfig" in res["outputDataConfig"]:
+                        actual_output_s3_uri = res["outputDataConfig"]["s3OutputDataConfig"]["s3Uri"]
+                        alt_bucket, alt_prefix = extract_s3_uri(actual_output_s3_uri)
+                        output_key = alt_prefix + "/output.json" if alt_prefix else "output.json"
+                        
+                        output_resp = s3_client.get_object(Bucket=alt_bucket, Key=output_key)
+                        output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
+                        
+                        return output_json['data'][0]['embedding']
+                        
+                elif res["status"] in ("Failed", "Cancelled"):
+                    error_msg = res.get("failureMessage", "Unknown error")
+                    raise ValueError(f"Text embedding async invoke failed: {error_msg}")
+                    
+                time.sleep(2)  # 文本处理较快，2秒间隔
+                attempt += 1
+                
+            except Exception as e:
+                if attempt == max_attempts - 1:
+                    raise e
+                time.sleep(2)
+                attempt += 1
+        
+        raise TimeoutError("Text embedding async invoke timed out")
+        
+    except Exception as e:
+        print(f"Error in get_text_embedding_from_marengo: {str(e)}")
+        raise e
+
+def get_embedding_from_marengo(media_type, s3_uri, bucket_name, search_mode='visual-image'):
     """使用Marengo模型获取embedding"""
     try:
         # 获取账户ID
@@ -116,7 +217,8 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                         "uri": s3_uri,
                         "bucketOwner": account_id
                     }
-                }
+                },
+                "embeddingTypes": [search_mode]  # 根据搜索模式指定embedding类型
             }
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
@@ -159,10 +261,18 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                         output_resp = s3_client.get_object(Bucket=alt_bucket, Key=output_key)
                         output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
                         
-                        if "embedding" in output_json["data"][0]:
-                            return output_json["data"][0]["embedding"]
+                        # 根据搜索模式返回对应的embedding
+                        data = output_json["data"][0]
+                        if search_mode == 'visual-image' and 'visualImageEmbedding' in data:
+                            return data['visualImageEmbedding']
+                        elif search_mode == 'visual-text' and 'visualTextEmbedding' in data:
+                            return data['visualTextEmbedding']
+                        elif search_mode == 'audio' and 'audioEmbedding' in data:
+                            return data['audioEmbedding']
+                        elif 'embedding' in data:
+                            return data['embedding']
                         else:
-                            raise ValueError("No embedding found in output.json")
+                            raise ValueError(f"No {search_mode} embedding found in output.json")
                         
                 elif res["status"] in ("Failed", "Cancelled"):
                     error_msg = res.get("failureMessage", "Unknown error")
@@ -216,20 +326,50 @@ def get_opensearch_client():
     )
     return client
 
-def search_similar_embeddings(client, query_embedding, top_k=10):
+def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10):
     """在OpenSearch中搜索相似embedding"""
-    search_body = {
-        "size": top_k,
-        "query": {
-            "knn": {
-                "embedding_vector": {
-                    "vector": query_embedding,
-                    "k": top_k
+    # 如果是文本搜索，同时搜索多个字段（统一向量空间）
+    if embedding_field == 'text_embedding':
+        search_body = {
+            "size": top_k,
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "knn": {
+                                "text_embedding": {
+                                    "vector": query_embedding,
+                                    "k": top_k
+                                }
+                            }
+                        },
+                        {
+                            "knn": {
+                                "visual_embedding": {
+                                    "vector": query_embedding,
+                                    "k": top_k
+                                }
+                            }
+                        }
+                    ]
                 }
-            }
-        },
-        "_source": ["s3_uri", "file_type", "timestamp"]
-    }
+            },
+            "_source": ["s3_uri", "file_type", "timestamp"]
+        }
+    else:
+        # 其他搜索使用单一字段
+        search_body = {
+            "size": top_k,
+            "query": {
+                "knn": {
+                    embedding_field: {
+                        "vector": query_embedding,
+                        "k": top_k
+                    }
+                }
+            },
+            "_source": ["s3_uri", "file_type", "timestamp"]
+        }
     
     response = client.search(
         index=OPENSEARCH_INDEX,

@@ -47,55 +47,99 @@ def start_search(event):
     """启动搜索任务"""
     try:
         body = json.loads(event.get('body', '{}'))
-        file_data = body.get('file')
-        file_name = body.get('fileName')
-        file_type = body.get('fileType')
-        
-        if not all([file_data, file_name, file_type]):
-            return {
-                'statusCode': 400,
-                'headers': get_cors_headers(),
-                'body': json.dumps({'error': 'Missing file data or filename'})
-            }
+        search_type = body.get('searchType', 'file')  # 'file' 或 'text'
+        search_mode = body.get('searchMode', 'visual-image')  # 搜索模式
         
         # 生成搜索ID
         search_id = str(uuid.uuid4())
         
-        # 临时存储文件到S3
-        temp_key = f"temp/{search_id}.{file_name.split('.')[-1]}"
-        file_content = base64.b64decode(file_data)
-        
-        s3_client.put_object(
-            Bucket=UPLOAD_BUCKET,
-            Key=temp_key,
-            Body=file_content,
-            ContentType=file_type
-        )
-        
-        # 在DynamoDB中创建搜索任务记录
-        table = dynamodb.Table(SEARCH_TABLE_NAME)
-        table.put_item(
-            Item={
-                'search_id': search_id,
-                'status': 'pending',
-                'file_name': file_name,
-                'file_type': file_type,
-                's3_key': temp_key,
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            }
-        )
-        
-        # 发送消息到SQS队列
-        sqs.send_message(
-            QueueUrl=SEARCH_QUEUE_URL,
-            MessageBody=json.dumps({
-                'search_id': search_id,
-                'file_name': file_name,
-                'file_type': file_type,
-                's3_key': temp_key
-            })
-        )
+        if search_type == 'text':
+            # 文本搜索
+            query_text = body.get('queryText')
+            if not query_text:
+                return {
+                    'statusCode': 400,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({'error': 'Missing query text'})
+                }
+            
+            # 在DynamoDB中创建搜索任务记录
+            table = dynamodb.Table(SEARCH_TABLE_NAME)
+            table.put_item(
+                Item={
+                    'search_id': search_id,
+                    'status': 'pending',
+                    'search_type': 'text',
+                    'search_mode': search_mode,
+                    'query_text': query_text,
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }
+            )
+            
+            # 发送消息到SQS队列
+            sqs.send_message(
+                QueueUrl=SEARCH_QUEUE_URL,
+                MessageBody=json.dumps({
+                    'search_id': search_id,
+                    'search_type': 'text',
+                    'search_mode': search_mode,
+                    'query_text': query_text
+                })
+            )
+            
+        else:
+            # 文件搜索
+            file_data = body.get('file')
+            file_name = body.get('fileName')
+            file_type = body.get('fileType')
+            
+            if not all([file_data, file_name, file_type]):
+                return {
+                    'statusCode': 400,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({'error': 'Missing file data or filename'})
+                }
+            
+            # 临时存储文件到S3
+            temp_key = f"temp/{search_id}.{file_name.split('.')[-1]}"
+            file_content = base64.b64decode(file_data)
+            
+            s3_client.put_object(
+                Bucket=UPLOAD_BUCKET,
+                Key=temp_key,
+                Body=file_content,
+                ContentType=file_type
+            )
+            
+            # 在DynamoDB中创建搜索任务记录
+            table = dynamodb.Table(SEARCH_TABLE_NAME)
+            table.put_item(
+                Item={
+                    'search_id': search_id,
+                    'status': 'pending',
+                    'search_type': 'file',
+                    'search_mode': search_mode,
+                    'file_name': file_name,
+                    'file_type': file_type,
+                    's3_key': temp_key,
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }
+            )
+            
+            # 发送消息到SQS队列
+            sqs.send_message(
+                QueueUrl=SEARCH_QUEUE_URL,
+                MessageBody=json.dumps({
+                    'search_id': search_id,
+                    'search_type': 'file',
+                    'search_mode': search_mode,
+                    'file_name': file_name,
+                    'file_type': file_type,
+                    's3_key': temp_key
+                })
+            )
         
         return {
             'statusCode': 202,
