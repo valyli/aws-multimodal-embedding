@@ -13,6 +13,7 @@ This directory contains screenshots for the TwelveLabs Marengo Embed 2.7 blog po
 5. **05-search-results.png** - Search results page showing similar files list and similarity scores
 6. **06-cross-modal-comparison.png** - Cross-modal search results comparison (different search modes)
 7. **07-processing-status.png** - Real-time processing status showing async processing progress
+8. **08-text-search-audio.png** - Text-to-audio search results showing audio file matches
 
 ## Usage in Blog Post
 
@@ -24,6 +25,7 @@ These screenshots will be inserted into `BLOG_POST.md` in the corresponding sect
 - Section 2.5: 05-search-results.png
 - Section 2.6: 06-cross-modal-comparison.png
 - Section 2.7: 07-processing-status.png
+- Section 2.8: 08-text-search-audio.png
 
 ## Image Requirements
 
