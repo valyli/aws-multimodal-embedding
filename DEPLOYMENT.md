@@ -1,252 +1,231 @@
-# AWS 多模态嵌入搜索系统 - 部署指南
+# AWS 多模态搜索系统部署文档
 
-## 📋 系统概述
+## 系统概述
 
-基于AWS无服务器架构的多模态嵌入搜索系统，支持图片上传、自动向量化处理和相似度搜索。
+基于 AWS 无服务器架构的多模态搜索系统，支持图片、视频和文本的智能搜索。使用 TwelveLabs Marengo 模型进行多模态 embedding 生成，OpenSearch 进行向量搜索。
 
-### 🏗️ 架构组件
-- **前端**: HTML/JS静态页面 (CloudFront + S3)
-- **API**: API Gateway + Lambda (Python)
-- **存储**: S3 + OpenSearch Serverless
-- **AI**: Amazon Bedrock Titan Multimodal Embeddings
-- **基础设施**: AWS CDK (Python)
+## 架构组件
 
-## 🔧 前置要求
+- **前端**: React 静态网站 (CloudFront + S3)
+- **API**: API Gateway + Lambda (FastAPI)
+- **存储**: S3 (文件存储)
+- **搜索**: OpenSearch Serverless (向量搜索)
+- **队列**: SQS (异步任务处理)
+- **数据库**: DynamoDB (搜索状态管理)
+- **AI模型**: Amazon Bedrock (TwelveLabs Marengo)
+
+## 前置要求
 
 ### 1. 环境准备
 ```bash
-# AWS CLI (版本 2.x)
+# Node.js 18+
+node --version
+
+# AWS CLI v2
 aws --version
 
-# Node.js (版本 18.x+)
-node --version
-npm --version
-
-# Python (版本 3.11+)
+# Python 3.11+
 python3 --version
-pip3 --version
 
-# AWS CDK
+# AWS CDK v2
 npm install -g aws-cdk
 cdk --version
 ```
 
-### 2. AWS 权限要求
-确保AWS账户具有以下服务权限：
-- **Lambda**: 创建函数、层、权限
-- **API Gateway**: 创建REST API
-- **S3**: 创建存储桶、对象操作
-- **CloudFront**: 创建分发
-- **OpenSearch Serverless**: 创建集合、策略
-- **Bedrock**: 调用模型 (需要在控制台启用Titan模型)
-- **IAM**: 创建角色、策略
+### 2. AWS 权限配置
+```bash
+# 配置 AWS 凭证
+aws configure
 
-### 3. Bedrock 模型启用
-1. 登录AWS控制台
-2. 进入Amazon Bedrock服务
-3. 选择"Model access"
-4. 启用 `Amazon Titan Multimodal Embeddings G1`
+# 验证权限
+aws sts get-caller-identity
+```
 
-## 🚀 部署步骤
+### 3. 必需的 AWS 服务权限
+- Amazon Bedrock (TwelveLabs Marengo 模型访问)
+- OpenSearch Serverless
+- Lambda
+- API Gateway
+- S3
+- CloudFront
+- DynamoDB
+- SQS
 
-### 步骤 1: 克隆代码
+## 部署步骤
+
+### 1. 克隆项目
 ```bash
 git clone <repository-url>
 cd aws-multimodal-embedding
 ```
 
-### 步骤 2: 配置项目
-编辑 `config/settings.py`，修改服务前缀：
+### 2. 配置服务前缀
+编辑 `config/settings.py`:
 ```python
-SERVICE_PREFIX = "your-project-name"  # 替换为你的项目名称
+SERVICE_PREFIX = "your-project-name"  # 修改为你的项目名
 ```
 
-### 步骤 3: 安装依赖
+### 3. 安装依赖
 ```bash
-# 安装CDK依赖
+# CDK 依赖
 cd infrastructure
 npm install
 
-# 安装Python依赖
-pip3 install -r requirements.txt
-
-# 构建OpenSearch Layer
-cd ../backend/layers/opensearch_layer
-mkdir -p python
-pip3 install opensearch-py==2.8.0 -t python/
-cd ../../../
+# Python 依赖 (如果需要本地测试)
+pip install -r requirements.txt
 ```
 
-### 步骤 4: 配置AWS凭证
+### 4. 部署基础设施
 ```bash
-# 方式1: 使用AWS CLI配置
-aws configure
-
-# 方式2: 使用环境变量
-export AWS_ACCESS_KEY_ID=your-access-key
-export AWS_SECRET_ACCESS_KEY=your-secret-key
-export AWS_DEFAULT_REGION=us-east-1
-```
-
-### 步骤 5: 部署基础设施
-```bash
-cd infrastructure
-
-# 初始化CDK (首次部署)
-cdk bootstrap
-
-# 部署堆栈
+# 在 infrastructure 目录下
+export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+cdk bootstrap  # 首次部署需要
 cdk deploy --require-approval never
 ```
 
-部署完成后，记录输出的重要信息：
-- `CloudFrontDomainName`: 前端访问域名
-- `ApiGatewayEndpoint`: API网关端点
-- `SearchApiEndpoint`: 搜索API端点
-- `OpenSearchEndpoint`: OpenSearch端点
-
-### 步骤 6: 上传前端文件
+### 5. 上传前端文件
 ```bash
-# 获取前端存储桶名称
-FRONTEND_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name your-project-name-stack \
-  --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' \
-  --output text)
-
-# 上传前端文件
-aws s3 cp frontend/ s3://$FRONTEND_BUCKET/ --recursive
+# 部署完成后，上传前端到 S3
+aws s3 sync frontend/ s3://your-project-name-frontend/ --delete
 ```
 
-### 步骤 7: 更新搜索页面API端点
-编辑 `frontend/search.html`，更新搜索API端点：
-```javascript
-// 替换为实际的搜索API端点
-const response = await fetch('https://your-search-api-id.execute-api.us-east-1.amazonaws.com/prod/', {
-```
+## 配置说明
 
-重新上传搜索页面：
+### 环境变量
+系统会自动设置以下环境变量：
+- `OPENSEARCH_ENDPOINT`: OpenSearch 集群端点
+- `OPENSEARCH_INDEX`: 索引名称 (默认: embeddings)
+- `SEARCH_TABLE_NAME`: DynamoDB 表名
+- `SEARCH_QUEUE_URL`: SQS 队列 URL
+
+### 服务配置
+- **Lambda 超时**: 15分钟 (embedding 处理)
+- **Lambda 内存**: 1024MB
+- **SQS 可见性超时**: 900秒
+- **文件大小限制**: 10MB
+- **支持格式**: PNG, JPEG, JPG, WEBP, MP4, MOV
+
+## 功能特性
+
+### 1. 多模态 Embedding
+- **图片**: 生成视觉 embedding
+- **视频**: 生成视觉、文本、音频三种 embedding
+- **文本**: 生成文本 embedding
+
+### 2. 搜索模式
+- **文件搜索**: 上传图片/视频搜索相似内容
+- **文本搜索**: 输入文本描述搜索相关内容
+- **视频搜索模式**: 视觉相似/语义相似/音频相似
+
+### 3. 异步处理
+- 避免 CloudFront 超时
+- 实时状态更新
+- 后台队列处理
+
+## 使用指南
+
+### 1. 文件上传
+1. 访问 CloudFront 域名
+2. 选择"文件上传"
+3. 上传图片或视频文件
+4. 系统自动生成 embedding
+
+### 2. 搜索功能
+1. 选择"异步搜索"
+2. 选择搜索类型：
+   - **文件搜索**: 上传文件查找相似内容
+   - **文本搜索**: 输入描述查找相关内容
+3. 对于视频文件，可选择搜索模式
+4. 查看搜索结果和相似度分数
+
+## 故障排除
+
+### 1. 部署失败
 ```bash
-aws s3 cp frontend/search.html s3://$FRONTEND_BUCKET/search.html
+# 检查 CDK 版本
+cdk --version
+
+# 清理并重新部署
+cdk destroy
+cdk deploy --require-approval never
 ```
 
-## 🧪 验证部署
-
-### 1. 访问前端
-打开浏览器访问CloudFront域名：
-- 上传页面: `https://your-cloudfront-domain.cloudfront.net/upload.html`
-- 搜索页面: `https://your-cloudfront-domain.cloudfront.net/search.html`
-
-### 2. 测试上传功能
-1. 访问上传页面
-2. 选择一张图片文件
-3. 点击上传，确认成功
-
-### 3. 测试搜索功能
-1. 访问搜索页面
-2. 选择一张图片文件
-3. 点击搜索，查看相似图片结果
-
-### 4. 检查日志
+### 2. Embedding 处理失败
+- 检查文件格式和大小限制
+- 验证 Bedrock 模型访问权限
+- 查看 Lambda 日志：
 ```bash
-# 检查embedding处理日志
-aws logs tail /aws/lambda/your-project-name-embedding --follow
-
-# 检查搜索日志
-aws logs tail /aws/lambda/your-project-name-search --follow
+aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/your-project-name"
 ```
 
-## 🔧 故障排除
+### 3. 搜索无结果
+- 确认文件已成功处理 (检查 OpenSearch 索引)
+- 验证搜索参数
+- 检查 OpenSearch 集群状态
 
-### 常见问题
+### 4. 前端访问问题
+- 确认 CloudFront 分发状态
+- 检查 S3 存储桶策略
+- 验证 API Gateway 端点
 
-#### 1. Bedrock权限错误
-```
-ValidationException: Could not access bedrock service
-```
-**解决方案**: 确保在Bedrock控制台启用了Titan模型访问权限
+## 监控和日志
 
-#### 2. OpenSearch连接失败
-```
-ConnectionError: Connection refused
-```
-**解决方案**: 检查OpenSearch集合状态，确保为ACTIVE状态
+### 1. CloudWatch 日志组
+- `/aws/lambda/your-project-name-embedding`
+- `/aws/lambda/your-project-name-search-api`
+- `/aws/lambda/your-project-name-search-worker`
 
-#### 3. Lambda超时
-```
-Task timed out after X seconds
-```
-**解决方案**: 增加Lambda超时时间或优化代码
+### 2. 关键指标
+- Lambda 执行时间和错误率
+- SQS 队列��度
+- OpenSearch 查询性能
+- S3 存储使用量
 
-#### 4. S3权限错误
-```
-AccessDenied: Access Denied
-```
-**解决方案**: 检查IAM角色权限配置
+## 成本优化
 
-### 调试命令
-```bash
-# 查看堆栈状态
-cdk diff
-cdk ls
+### 1. 资源配置
+- Lambda 内存根据实际需求调整
+- OpenSearch 实例类型优化
+- S3 生命周期策略
 
-# 查看CloudFormation事件
-aws cloudformation describe-stack-events --stack-name your-project-name-stack
+### 2. 使用建议
+- 合理控制文件大小
+- 定期清理临时文件
+- 监控 Bedrock 调用量
 
-# 查看Lambda函数
-aws lambda list-functions --query 'Functions[?contains(FunctionName, `your-project-name`)]'
+## 安全考虑
 
-# 查看OpenSearch集合
-aws opensearchserverless list-collections
-```
+### 1. 访问控制
+- IAM 角色最小权限原则
+- API Gateway 访问控制
+- S3 存储桶策略
 
-## 🗑️ 清理资源
+### 2. 数据保护
+- 传输加密 (HTTPS)
+- 存储加密 (S3, OpenSearch)
+- 临时文件自动清理
 
-删除所有AWS资源：
-```bash
-cd infrastructure
-cdk destroy --force
-```
+## 扩展和定制
 
-**注意**: 这将删除所有数据，包括上传的文件和向量数据。
+### 1. 添加新的文件格式
+修改 `backend/embedding/main.py` 中的文件类型检查
 
-## 📊 成本估算
+### 2. 调整搜索算法
+修改 `backend/search_worker/main.py` 中的搜索逻辑
 
-基于中等使用量的月度成本估算：
-- **Lambda**: $5-20 (基于调用次数)
-- **API Gateway**: $3-10 (基于请求数)
-- **S3**: $1-5 (基于存储量)
-- **CloudFront**: $1-3 (基于流量)
-- **OpenSearch Serverless**: $50-100 (基于索引大小)
-- **Bedrock**: $0.1-1 (基于embedding调用)
+### 3. 自定义前端界面
+修改 `frontend/` 目录下的 HTML/CSS/JS 文件
 
-**总计**: 约 $60-140/月
-
-## 🔒 安全建议
-
-1. **启用CloudTrail**: 记录API调用
-2. **配置VPC**: 将Lambda放入私有子网
-3. **使用WAF**: 保护API Gateway
-4. **启用加密**: S3和OpenSearch数据加密
-5. **最小权限**: 精确配置IAM权限
-
-## 📈 扩展建议
-
-1. **添加认证**: 集成Cognito用户池
-2. **批量处理**: 使用SQS队列处理大量文件
-3. **监控告警**: 配置CloudWatch告警
-4. **多区域**: 部署到多个AWS区域
-5. **缓存优化**: 使用ElastiCache缓存搜索结果
-
-## 📞 支持
+## 技术支持
 
 如遇到问题，请检查：
-1. AWS服务限制和配额
-2. 区域服务可用性
-3. IAM权限配置
-4. 网络连接状态
+1. AWS 服务状态
+2. CloudWatch 日志
+3. 系统配置
+4. 网络连接
 
----
+## 版本信息
 
-**版本**: 1.0  
-**更新时间**: 2025年1月  
-**兼容性**: AWS CDK v2, Python 3.11+
+- **当前版本**: 1.0.0
+- **最后更新**: 2025-01-25
+- **兼容性**: AWS CDK v2, Node.js 18+, Python 3.11+
