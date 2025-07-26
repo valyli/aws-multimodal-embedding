@@ -37,3 +37,17 @@ SERVICE_PREFIX = "your-project-name"
 - ✅ 使用Python CDK管理基础设施
 - ✅ 支持多环境部署
 - ✅ 代码高度可复用
+
+## 测试素材资源
+
+为了充分测试多模态搜索功能，可以从以下AWS官方资源获取高质量的测试素材：
+
+### 图片素材
+- **Amazon Nova Canvas示例**: https://www.amazon.science/blog/amazon-nova-canvas-examples
+- **Nova Creative创意素材**: https://aws.amazon.com/ai/generative-ai/nova/creative/
+- **Nova Canvas视觉指南**: https://aws.amazon.com/blogs/machine-learning/exploring-creative-possibilities-a-visual-guide-to-amazon-nova-canvas/
+
+### 视频素材
+- **Luma AI Ray 2视频模型示例**: https://aws.amazon.com/blogs/aws/luma-ai-ray-2-video-model-is-now-available-in-amazon-bedrock/
+
+这些资源提供了丰富的多模态内容，非常适合测试TwelveLabs Marengo Embed 2.7的跨模态搜索能力。
