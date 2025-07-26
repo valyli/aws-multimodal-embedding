@@ -33,18 +33,19 @@
         </div>
         
         <h1>📁 文件上传</h1>
-        <p>支持图片和视频文件上传到AWS S3存储</p>
+        <p>支持图片、视频和音频文件上传到AWS S3存储（文件大小限制：10MB）</p>
         
         <div class="upload-area" onclick="document.getElementById('fileInput').click()">
             <div id="uploadText">
                 <h3>点击选择文件或拖拽文件到此处</h3>
                 <div class="allowed-types">
-                    支持格式: PNG, JPEG, JPG, WebP, MP4, MOV
+                    支持格式: PNG, JPEG, JPG, WebP, MP4, MOV, WAV, MP3, M4A<br>
+                    文件大小限制: 10MB
                 </div>
             </div>
         </div>
         
-        <input type="file" id="fileInput" class="file-input" accept=".png,.jpeg,.jpg,.webp,.mp4,.mov">
+        <input type="file" id="fileInput" class="file-input" accept=".png,.jpeg,.jpg,.webp,.mp4,.mov,.wav,.mp3,.m4a">
         
         <div id="fileInfo" class="file-info" style="display: none;">
             <strong>选中文件:</strong> <span id="fileName"></span><br>
@@ -59,7 +60,7 @@
 
     <script>
         const API_BASE = 'https://phs8fhnzi4.execute-api.us-east-1.amazonaws.com/prod';
-        const allowedTypes = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov'];
+        const allowedTypes = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov', 'wav', 'mp3', 'm4a'];
         let selectedFile = null;
         
         const fileInput = document.getElementById('fileInput');
@@ -102,6 +103,12 @@
             
             if (!allowedTypes.includes(ext)) {
                 showResult(`不支持的文件类型。仅支持: ${allowedTypes.join(', ')}`, 'error');
+                return;
+            }
+            
+            // 检查文件大小（10MB限制）
+            if (file.size > 10 * 1024 * 1024) {
+                showResult('文件大小不能超过10MB，请选择较小的文件', 'error');
                 return;
             }
             

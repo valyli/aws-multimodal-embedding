@@ -76,6 +76,8 @@ def process_search(message):
             media_type = 'image'
         elif file_ext in ['mp4', 'mov']:
             media_type = 'video'
+        elif file_ext in ['wav', 'mp3', 'm4a']:
+            media_type = 'audio'
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
         
@@ -206,6 +208,16 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name, search_mode='vis
                 },
                 "embeddingTypes": [search_mode]  # 根据搜索模式指定embedding类型
             }
+        elif media_type == "audio":
+            model_input = {
+                "inputType": "audio",
+                "mediaSource": {
+                    "s3Location": {
+                        "uri": s3_uri,
+                        "bucketOwner": account_id
+                    }
+                }
+            }
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
             
@@ -249,7 +261,10 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name, search_mode='vis
                         
                         # 根据搜索模式返回对应的embedding
                         data = output_json["data"][0]
-                        if search_mode == 'visual-image' and 'visualImageEmbedding' in data:
+                        if media_type == "audio":
+                            # 音频文件直接返回embedding
+                            return data['embedding']
+                        elif search_mode == 'visual-image' and 'visualImageEmbedding' in data:
                             return data['visualImageEmbedding']
                         elif search_mode == 'visual-text' and 'visualTextEmbedding' in data:
                             return data['visualTextEmbedding']
@@ -318,7 +333,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
     if embedding_field == 'text_embedding':
         # 搜索图片文件：text的embedding 与 图片的visual_embedding 匹配
         image_search_body = {
-            "size": top_k // 2,  # 分配一半的结果给图片
+            "size": top_k // 3,  # 分配三分之一给图片
             "query": {
                 "bool": {
                     "must": [
@@ -326,7 +341,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
                             "knn": {
                                 "visual_embedding": {
                                     "vector": query_embedding,
-                                    "k": top_k // 2
+                                    "k": top_k // 3
                                 }
                             }
                         },
@@ -343,7 +358,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
         
         # 搜索视频文件：text的embedding 与 视频的text_embedding 匹配
         video_search_body = {
-            "size": top_k // 2,  # 分配一半的结果给视频
+            "size": top_k // 3,  # 分配三分之一给视频
             "query": {
                 "bool": {
                     "must": [
@@ -351,7 +366,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
                             "knn": {
                                 "text_embedding": {
                                     "vector": query_embedding,
-                                    "k": top_k // 2
+                                    "k": top_k // 3
                                 }
                             }
                         },
@@ -366,14 +381,41 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
             "_source": ["s3_uri", "file_type", "timestamp"]
         }
         
-        # 执行两次搜索
+        # 搜索音频文件：text的embedding 与 音频的audio_embedding 匹配
+        audio_search_body = {
+            "size": top_k // 3,  # 分配三分之一给音频
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                "audio_embedding": {
+                                    "vector": query_embedding,
+                                    "k": top_k // 3
+                                }
+                            }
+                        },
+                        {
+                            "terms": {
+                                "file_type": ["wav", "mp3", "m4a"]
+                            }
+                        }
+                    ]
+                }
+            },
+            "_source": ["s3_uri", "file_type", "timestamp"]
+        }
+        
+        # 执行三次搜索
         image_response = client.search(index=OPENSEARCH_INDEX, body=image_search_body)
         video_response = client.search(index=OPENSEARCH_INDEX, body=video_search_body)
+        audio_response = client.search(index=OPENSEARCH_INDEX, body=audio_search_body)
         
         # 合并结果
         all_hits = []
         all_hits.extend(image_response['hits']['hits'])
         all_hits.extend(video_response['hits']['hits'])
+        all_hits.extend(audio_response['hits']['hits'])
         
         # 按分数排序
         all_hits.sort(key=lambda x: x['_score'], reverse=True)

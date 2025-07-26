@@ -51,6 +51,10 @@ def handler(event, context):
                 # 视频文件 - 使用Marengo模型
                 embedding = get_embedding_from_marengo('video', s3_uri, bucket_name)
                 store_embedding(opensearch_client, s3_uri, embedding, file_ext)
+            elif file_ext in ['wav', 'mp3', 'm4a']:
+                # 音频文件 - 使用Marengo模型的audio功能
+                embedding = get_embedding_from_marengo('audio', s3_uri, bucket_name)
+                store_embedding(opensearch_client, s3_uri, embedding, file_ext)
             else:
                 print(f"Unsupported file type: {file_ext}")
                 continue
@@ -162,6 +166,16 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                 }
                 # 不指定embeddingTypes，获取所有可用的embedding类型
             }
+        elif media_type == "audio":
+            model_input = {
+                "inputType": "audio",
+                "mediaSource": {
+                    "s3Location": {
+                        "uri": s3_uri,
+                        "bucketOwner": account_id
+                    }
+                }
+            }
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
             
@@ -217,6 +231,9 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                                     elif item["embeddingOption"] == "audio":
                                         embeddings["audioEmbedding"] = item["embedding"]
                                 return embeddings
+                            elif media_type == "audio":
+                                # 音频文件只有audio embedding
+                                return {"audioEmbedding": output_json["data"][0]["embedding"]}
                             else:
                                 # 图片只有一个embedding
                                 return output_json["data"][0]
@@ -274,7 +291,7 @@ def store_embedding(client, s3_uri, embedding_data, file_type):
         # 图片只有一个视觉embedding
         document['visual_embedding'] = embedding_data['embedding']
     else:
-        # 视频有多种embedding类型
+        # 视频或音频有多种embedding类型
         if 'visualImageEmbedding' in embedding_data:
             document['visual_embedding'] = embedding_data['visualImageEmbedding']
         if 'visualTextEmbedding' in embedding_data:

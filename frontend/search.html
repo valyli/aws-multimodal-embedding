@@ -174,9 +174,9 @@
             <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
                 选择文件
             </button>
-            <input type="file" id="fileInput" accept="image/*,video/*" onchange="handleFileSelect(event)">
+            <input type="file" id="fileInput" accept="image/*,video/*,audio/*" onchange="handleFileSelect(event)">
             <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                支持格式：PNG, JPEG, JPG, WEBP, MP4, MOV<br>
+                支持格式：PNG, JPEG, JPG, WEBP, MP4, MOV, WAV, MP3, M4A<br>
                 <small>注意：视频需为标准MP4格式，时长不超过10分钟</small>
             </p>
         </div>
@@ -283,15 +283,15 @@
 
         function handleFile(file) {
             // 检查文件类型
-            const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'video/mp4', 'video/quicktime'];
+            const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'video/mp4', 'video/quicktime', 'audio/wav', 'audio/mpeg', 'audio/mp4'];
             if (!allowedTypes.includes(file.type)) {
-                showStatus('请选择支持的文件格式（PNG, JPEG, JPG, WEBP, MP4, MOV）', 'error');
+                showStatus('请选择支持的文件格式（PNG, JPEG, JPG, WEBP, MP4, MOV, WAV, MP3, M4A）', 'error');
                 return;
             }
 
             // 检查文件大小（10MB限制）
             if (file.size > 10 * 1024 * 1024) {
-                showStatus('文件大小不能超过10MB', 'error');
+                showStatus('文件大小不能超过10MB，请选择较小的文件', 'error');
                 return;
             }
 
@@ -304,6 +304,9 @@
                 if (file.type.startsWith('video/')) {
                     // 显示视频预览
                     previewElement.outerHTML = `<video id="previewImg" controls style="max-width: 300px; max-height: 300px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><source src="${e.target.result}" type="${file.type}"></video>`;
+                } else if (file.type.startsWith('audio/')) {
+                    // 显示音频预览
+                    previewElement.outerHTML = `<audio id="previewImg" controls style="width: 300px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><source src="${e.target.result}" type="${file.type}"></audio>`;
                 } else {
                     // 显示图片预览
                     previewElement.src = e.target.result;
@@ -314,7 +317,12 @@
             };
             reader.readAsDataURL(file);
             
-            const fileTypeText = file.type.startsWith('video/') ? '视频' : '图片';
+            let fileTypeText = '图片';
+            if (file.type.startsWith('video/')) {
+                fileTypeText = '视频';
+            } else if (file.type.startsWith('audio/')) {
+                fileTypeText = '音频';
+            }
             showStatus(`${fileTypeText}已选择，点击搜索按钮开始查找相似内容`, 'info');
             
             // 显示/隐藏搜索模式选择
@@ -362,7 +370,12 @@
                     requestData.fileName = selectedFile.name;
                     requestData.fileType = selectedFile.type;
                     
-                    const fileTypeText = selectedFile.type.startsWith('video/') ? '视频' : '图片';
+                    let fileTypeText = '图片';
+                    if (selectedFile.type.startsWith('video/')) {
+                        fileTypeText = '视频';
+                    } else if (selectedFile.type.startsWith('audio/')) {
+                        fileTypeText = '音频';
+                    }
                     showStatus(`正在启动${fileTypeText}搜索任务...`, 'info');
                 }
 
@@ -464,10 +477,18 @@
                 resultsList.innerHTML = '<p>未找到相似的内容</p>';
             } else {
                 resultsList.innerHTML = results.map(result => {
-                    const isVideo = ['mp4', 'mov'].includes(result.file_type.toLowerCase());
-                    const mediaElement = isVideo ? 
-                        `<video controls style="max-width: 150px; max-height: 150px; border-radius: 5px;"><source src="${result.image_url}" type="video/${result.file_type.toLowerCase() === 'mov' ? 'quicktime' : result.file_type.toLowerCase()}"></video>` :
-                        `<img src="${result.image_url}" alt="相似图片" style="max-width: 150px; max-height: 150px; border-radius: 5px;">`;
+                    const fileType = result.file_type.toLowerCase();
+                    const isVideo = ['mp4', 'mov'].includes(fileType);
+                    const isAudio = ['wav', 'mp3', 'm4a'].includes(fileType);
+                    
+                    let mediaElement;
+                    if (isVideo) {
+                        mediaElement = `<video controls style="max-width: 150px; max-height: 150px; border-radius: 5px;"><source src="${result.image_url}" type="video/${fileType === 'mov' ? 'quicktime' : fileType}"></video>`;
+                    } else if (isAudio) {
+                        mediaElement = `<div style="width: 150px; text-align: center; padding: 20px; border: 2px dashed #ddd; border-radius: 5px;"><div style="font-size: 24px; margin-bottom: 10px;">🎧</div><audio controls style="width: 100%;"><source src="${result.image_url}" type="audio/${fileType === 'mp3' ? 'mpeg' : fileType === 'm4a' ? 'mp4' : fileType}"></audio></div>`;
+                    } else {
+                        mediaElement = `<img src="${result.image_url}" alt="相似图片" style="max-width: 150px; max-height: 150px; border-radius: 5px;">`;
+                    }
                     
                     return `
                         <div class="result-item">
