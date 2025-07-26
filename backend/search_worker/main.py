@@ -63,7 +63,7 @@ def process_search(message):
         # 文本搜索
         query_text = message['query_text']
         query_embedding = get_text_embedding_from_marengo(query_text)
-        embedding_field = 'text_embedding'  # 文本搜索使用text_embedding字段
+        embedding_field = 'text_embedding'  # 标记为文本搜索，在search_similar_embeddings中会分别处理
     else:
         # 文件搜索
         file_name = message['file_name']
@@ -74,31 +74,17 @@ def process_search(message):
         file_ext = file_name.split('.')[-1].lower()
         if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
             media_type = 'image'
-            embedding_field = 'visual_embedding'
         elif file_ext in ['mp4', 'mov']:
             media_type = 'video'
-            # 根据搜索模式选择embedding字段
-            if search_mode == 'visual':
-                embedding_field = 'visual_embedding'
-            elif search_mode == 'text':
-                embedding_field = 'text_embedding'
-            elif search_mode == 'audio':
-                embedding_field = 'audio_embedding'
-            else:
-                embedding_field = 'visual_embedding'
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
         
+        # 文件搜索统一使用visual_embedding
+        embedding_field = 'visual_embedding'
+        
         s3_uri = f"s3://{UPLOAD_BUCKET}/{s3_key}"
-        # 根据搜索模式生成对应的embedding
-        if search_mode == 'visual':
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
-        elif search_mode == 'text':
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-text')
-        elif search_mode == 'audio':
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'audio')
-        else:
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
+        # 文件搜索统一使用visual-image模式
+        query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
         
         # 清理临时文件
         try:
@@ -328,27 +314,25 @@ def get_opensearch_client():
 
 def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10):
     """在OpenSearch中搜索相似embedding"""
-    # 如果是文本搜索，同时搜索多个字段（统一向量空间）
+    # 如果是文本搜索，分别对图片和视频文件进行搜索
     if embedding_field == 'text_embedding':
-        search_body = {
-            "size": top_k,
+        # 搜索图片文件：text的embedding 与 图片的visual_embedding 匹配
+        image_search_body = {
+            "size": top_k // 2,  # 分配一半的结果给图片
             "query": {
                 "bool": {
-                    "should": [
-                        {
-                            "knn": {
-                                "text_embedding": {
-                                    "vector": query_embedding,
-                                    "k": top_k
-                                }
-                            }
-                        },
+                    "must": [
                         {
                             "knn": {
                                 "visual_embedding": {
                                     "vector": query_embedding,
-                                    "k": top_k
+                                    "k": top_k // 2
                                 }
+                            }
+                        },
+                        {
+                            "terms": {
+                                "file_type": ["png", "jpeg", "jpg", "webp"]
                             }
                         }
                     ]
@@ -356,13 +340,54 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
             },
             "_source": ["s3_uri", "file_type", "timestamp"]
         }
+        
+        # 搜索视频文件：text的embedding 与 视频的text_embedding 匹配
+        video_search_body = {
+            "size": top_k // 2,  # 分配一半的结果给视频
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                "text_embedding": {
+                                    "vector": query_embedding,
+                                    "k": top_k // 2
+                                }
+                            }
+                        },
+                        {
+                            "terms": {
+                                "file_type": ["mp4", "mov"]
+                            }
+                        }
+                    ]
+                }
+            },
+            "_source": ["s3_uri", "file_type", "timestamp"]
+        }
+        
+        # 执行两次搜索
+        image_response = client.search(index=OPENSEARCH_INDEX, body=image_search_body)
+        video_response = client.search(index=OPENSEARCH_INDEX, body=video_search_body)
+        
+        # 合并结果
+        all_hits = []
+        all_hits.extend(image_response['hits']['hits'])
+        all_hits.extend(video_response['hits']['hits'])
+        
+        # 按分数排序
+        all_hits.sort(key=lambda x: x['_score'], reverse=True)
+        
+        # 取前top_k个结果
+        all_hits = all_hits[:top_k]
+        
     else:
-        # 其他搜索使用单一字段
+        # 文件搜索：统一使用visual_embedding进行搜索
         search_body = {
             "size": top_k,
             "query": {
                 "knn": {
-                    embedding_field: {
+                    "visual_embedding": {  # 文件搜索统一使用visual_embedding
                         "vector": query_embedding,
                         "k": top_k
                     }
@@ -370,14 +395,13 @@ def search_similar_embeddings(client, query_embedding, embedding_field, top_k=10
             },
             "_source": ["s3_uri", "file_type", "timestamp"]
         }
+        
+        response = client.search(index=OPENSEARCH_INDEX, body=search_body)
+        all_hits = response['hits']['hits']
     
-    response = client.search(
-        index=OPENSEARCH_INDEX,
-        body=search_body
-    )
-    
+    # 处理结果
     results = []
-    for hit in response['hits']['hits']:
+    for hit in all_hits:
         source = hit['_source']
         score = hit['_score']
         
