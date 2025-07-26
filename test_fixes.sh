@@ -16,8 +16,9 @@ curl -s https://phs8fhnzi4.execute-api.us-east-1.amazonaws.com/prod/api/data | j
 echo
 
 # 测试前端页面
-echo "2. 测试前端页面标题："
-curl -s https://d7senjgtq9ilu.cloudfront.net/public/index.html | grep -E "<title>|<h1>" | head -2
+echo "2. 测试前端页面内容："
+echo "   标题和描述："
+curl -s https://d7senjgtq9ilu.cloudfront.net/public/index.html | grep -E "<title>|<h1>|<p.*center.*color.*666" | head -3
 echo
 
 echo "✅ 修复完成！"

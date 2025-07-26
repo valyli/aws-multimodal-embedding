@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloudscape Demo</title>
+    <title>TwelveLabs Marengo Multimodal Search Demo</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -19,38 +19,38 @@
 <body>
     <div class="container">
         <div class="nav" style="text-align: center; margin-bottom: 20px;">
-            <a href="/" style="color: #007dbc; text-decoration: none; margin: 0 15px;">🏠 首页</a> | 
-            <a href="/upload.html" style="color: #007dbc; text-decoration: none; margin: 0 15px;">📁 文件上传</a> | 
-            <a href="/search.html" style="color: #007dbc; text-decoration: none; margin: 0 15px;">🔍 异步搜索</a>
+            <a href="/" style="color: #007dbc; text-decoration: none; margin: 0 15px;">🏠 Home</a> | 
+            <a href="/upload.html" style="color: #007dbc; text-decoration: none; margin: 0 15px;">📁 File Upload</a> | 
+            <a href="/search.html" style="color: #007dbc; text-decoration: none; margin: 0 15px;">🔍 Search</a>
         </div>
         
-        <h1>🎆 Cloudscape Demo</h1>
-        <p style="text-align: center; color: #666;">AWS无服务器架构演示 - API Gateway + Lambda + CloudFront</p>
+        <h1>🎆 TwelveLabs Marengo Multimodal Search Demo</h1>
+        <p style="text-align: center; color: #666;">AWS Bedrock + TwelveLabs Marengo Embed 2.7 - Unified Vector Space Multimodal Search</p>
         
         <div class="endpoint">
-            <h3>🏠 主页端点</h3>
-            <button onclick="testEndpoint('/', 'result1')">测试 /</button>
-            <div id="result1" class="result">点击按钮测试API</div>
+            <h3>🏠 Home Endpoint</h3>
+            <button onclick="testEndpoint('/', 'result1')">Test /</button>
+            <div id="result1" class="result">Click button to test API</div>
         </div>
 
         <div class="endpoint">
-            <h3>❤️ 健康检查</h3>
-            <button onclick="testEndpoint('/health', 'result2')">测试 /health</button>
-            <div id="result2" class="result">点击按钮测试API</div>
+            <h3>❤️ Health Check</h3>
+            <button onclick="testEndpoint('/health', 'result2')">Test /health</button>
+            <div id="result2" class="result">Click button to test API</div>
         </div>
 
         <div class="endpoint">
-            <h3>📊 数据API</h3>
-            <button onclick="testEndpoint('/api/data', 'result3')">测试 /api/data</button>
-            <div id="result3" class="result">点击按钮测试API</div>
+            <h3>📊 Data API</h3>
+            <button onclick="testEndpoint('/api/data', 'result3')">Test /api/data</button>
+            <div id="result3" class="result">Click button to test API</div>
         </div>
 
         <div style="margin-top: 30px; padding: 15px; background: #e9ecef; border-radius: 5px;">
-            <h4>📝 系统说明</h4>
-            <p>• 基于 AWS 无服务器架构的 Cloudscape 应用演示</p>
-            <p>• 使用 API Gateway + Lambda + S3 + CloudFront</p>
-            <p>• 支持多环境部署和代码高度可复用</p>
-            <p>• 完全无服务器，无EC2暴露</p>
+            <h4>📝 System Overview</h4>
+            <p>• Multimodal search system powered by TwelveLabs Marengo Embed 2.7 model</p>
+            <p>• Unified vector space search for images, videos, and text</p>
+            <p>• AWS serverless architecture: API Gateway + Lambda + OpenSearch + Bedrock</p>
+            <p>• Cross-modal semantic understanding and similarity matching</p>
         </div>
     </div>
 
@@ -59,7 +59,7 @@
         
         async function testEndpoint(path, resultId) {
             const resultDiv = document.getElementById(resultId);
-            resultDiv.innerHTML = '<span style="color: #007dbc;">⏳ 加载中...</span>';
+            resultDiv.innerHTML = '<span style="color: #007dbc;">⏳ Loading...</span>';
             
             try {
                 const response = await fetch(API_BASE + path);
@@ -67,13 +67,13 @@
                 const statusClass = response.ok ? 'success' : 'error';
                 resultDiv.innerHTML = `
                     <div class="${statusClass}">
-                        <strong>状态:</strong> ${response.status} ${response.statusText}<br>
-                        <strong>响应:</strong><br>
+                        <strong>Status:</strong> ${response.status} ${response.statusText}<br>
+                        <strong>Response:</strong><br>
                         <pre>${JSON.stringify(data, null, 2)}</pre>
                     </div>
                 `;
             } catch (error) {
-                resultDiv.innerHTML = `<div class="error"><strong>错误:</strong> ${error.message}</div>`;
+                resultDiv.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
             }
         }
         

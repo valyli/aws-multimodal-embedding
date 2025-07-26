@@ -383,10 +383,7 @@ class CloudscapeStack(Stack):
                     origin_access_identity=oai
                 ),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cache_policy=cloudfront.CachePolicy.from_cache_policy_id(
-                    self, "DevCachePolicy",
-                    "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"  # CachingDisabled
-                )
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
             ),
             additional_behaviors={
                 "/api/*": cloudfront.BehaviorOptions(
