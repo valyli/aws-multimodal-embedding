@@ -61,6 +61,10 @@ class CloudscapeStack(Stack):
             proxy=True
         )
         
+        # 添加根路径方法
+        api.root.add_method("ANY", api_integration)
+        
+        # 添加代理资源
         api_resource = api.root.add_resource("{proxy+}")
         api_resource.add_method("ANY", api_integration)
 
