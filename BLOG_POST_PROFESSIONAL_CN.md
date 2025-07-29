@@ -1,12 +1,22 @@
-# 基于Amazon Bedrock构建TwelveLabs Marengo Embed 2.7多模态搜索系统
+# 基于Amazon Bedrock的TwelveLabs Marengo Embed 2.7多模态搜索系统
 
-*本文演示如何使用Amazon Bedrock上新发布的TwelveLabs Marengo Embed 2.7模型构建生产就绪的多模态搜索应用，展示跨图像、视频、音频和文本的跨模态能力。*
+*本文展示如何通过AI辅助开发，在零手工编码的情况下构建生产就绪的多模态搜索应用，完整体验Amazon Bedrock上TwelveLabs Marengo Embed 2.7模型的跨模态AI能力。*
+
+## 🚀 项目亮点
+
+### 🎯 完整多模态体验系统
+构建了一个**端到端的多模态搜索演示系统**，让用户能够直观体验Marengo Embed 2.7的强大跨模态能力，包括文本到图像、文本到视频、文本到音频以及文件间的相似性搜索。
+
+### ✨ AI辅助开发实践
+本项目**完全通过AI辅助开发完成**，开发者未编写任何一行代码。从架构设计、代码实现、部署配置到问题调试，全程由Amazon Q Developer AI助手完成，展示了AI驱动开发的巨大潜力。
 
 ## 引言
 
-在AWS Summit New York上，我们宣布了TwelveLabs视频理解模型在Amazon Bedrock上的可用性，其中包括突破性的**Marengo Embed 2.7**模型。该模型代表了多模态AI的重大进步，在单一的1024维向量空间内提供跨图像、视频、音频和文本的统一嵌入生成。
+在AWS Summit New York上，我们宣布TwelveLabs视频理解模型正式登陆Amazon Bedrock，其中包括突破性的**Marengo Embed 2.7**模型。该模型代表了多模态AI的重大进步，在单一的1024维向量空间内提供跨图像、视频、音频和文本的统一嵌入生成。
 
 与需要为每种模态使用单独模型的传统方法不同，Marengo Embed 2.7实现了真正的跨模态理解，允许开发者构建文本查询可以找到相关图像、图像可以匹配相似视频、音频内容可以与视觉元素语义链接的应用程序。
+
+**更令人兴奋的是，本文展示的完整多模态搜索系统完全通过AI辅助开发实现，无需手工编写任何代码，为AI驱动的软件开发开辟了新的可能性。**
 
 ## Marengo Embed 2.7的独特之处
 
@@ -43,7 +53,7 @@ Marengo Embed 2.7：
 
 ## 解决方案架构
 
-为了演示Marengo Embed 2.7的能力，我使用AWS无服务器服务构建了一个综合的多模态搜索系统：
+为了完整体验Marengo Embed 2.7的能力，我们**通过AI辅助开发**构建了一个基于**Serverless无服务器架构**的综合多模态搜索系统。整个开发过程中，从架构设计到代码实现，从部署配置到问题调试，**开发者未编写任何一行代码**，全程由Amazon Q Developer AI助手完成：
 
 ![系统架构](blog-assets/flag/Building%20a%20Multimodal%20Search%20System%20with%20TwelveLabs%20Marengo%20Embed%202.7%20on%20Amazon%20Bedrock.drawio.png)
 
@@ -53,45 +63,45 @@ Marengo Embed 2.7：
 
 #### 文件上传与处理工作流程
 
-<img src="blog-assets/flag/blue/1.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **用户交互**：用户通过CloudFront访问网络界面，通过拖放或文件选择上传媒体文件（图像、视频、音频）。
+<img src="blog-assets/flag/blue/1.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **用户交互**：用户通过Amazon CloudFront访问网络界面，通过拖放或文件选择上传媒体文件（图像、视频、音频）。
 
-<img src="blog-assets/flag/blue/2.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **API处理**：文件转换为base64格式，通过API Gateway发送到主Lambda函数，进行文件类型和大小限制（最大10MB）验证。
+<img src="blog-assets/flag/blue/2.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **API处理**：文件转换为base64格式，通过Amazon API Gateway发送到主AWS Lambda函数，进行文件类型和大小限制（最大10MB）验证。
 
-<img src="blog-assets/flag/blue/3.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **S3存储**：Lambda解码base64数据并将原始文件上传到Amazon S3进行持久化存储。
+<img src="blog-assets/flag/blue/3.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **Amazon S3存储**：AWS Lambda解码base64数据并将原始文件上传到Amazon S3进行持久化存储。
 
-<img src="blog-assets/flag/blue/4.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **S3事件触发**：S3在上传新文件时自动触发专用的嵌入Lambda函数，启动嵌入生成过程。
+<img src="blog-assets/flag/blue/4.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **Amazon S3事件触发**：Amazon S3在上传新文件时自动触发专用的嵌入AWS Lambda函数，启动嵌入生成过程。
 
-<img src="blog-assets/flag/blue/5.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **Bedrock调用**：嵌入Lambda异步调用Amazon Bedrock的Marengo Embed 2.7模型，为所有媒体类型生成统一的1024维嵌入向量。
+<img src="blog-assets/flag/blue/5.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **Amazon Bedrock调用**：嵌入AWS Lambda异步调用Amazon Bedrock的Marengo Embed 2.7模型，为所有媒体类型生成统一的1024维嵌入向量。
 
-<img src="blog-assets/flag/blue/6.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **向量存储**：嵌入Lambda将生成的嵌入向量与元数据一起存储在Amazon OpenSearch Service中，创建可搜索的向量数据库。
+<img src="blog-assets/flag/blue/6.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **向量存储**：嵌入AWS Lambda将生成的嵌入向量与元数据一起存储在Amazon OpenSearch Service中，创建可搜索的向量数据库。
 
 #### 搜索与检索工作流程
 
 <img src="blog-assets/flag/red/1.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **搜索请求**：用户通过网络界面使用上传文件或文本查询启动搜索，可选择不同的搜索模式（视觉、语义、音频）。
 
-<img src="blog-assets/flag/red/2.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **API处理**：搜索请求通过API Gateway发送到搜索API Lambda函数进行初始处理。
+<img src="blog-assets/flag/red/2.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **API处理**：搜索请求通过Amazon API Gateway发送到搜索API AWS Lambda函数进行初始处理。
 
-<img src="blog-assets/flag/red/3.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **任务创建**：搜索API Lambda在DynamoDB中创建搜索任务记录，并向SQS队列发送消息进行异步处理。
+<img src="blog-assets/flag/red/3.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **任务创建**：搜索API AWS Lambda在Amazon DynamoDB中创建搜索任务记录，并向Amazon SQS队列发送消息进行异步处理。
 
-<img src="blog-assets/flag/red/4.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **队列处理**：搜索API Lambda向Amazon SQS队列发送消息进行异步处理。
+<img src="blog-assets/flag/red/4.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **队列处理**：搜索API AWS Lambda向Amazon SQS队列发送消息进行异步处理。
 
-<img src="blog-assets/flag/red/5.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **工作器激活**：搜索工作Lambda被SQS消息触发，提取搜索参数并准备嵌入生成。
+<img src="blog-assets/flag/red/5.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **工作器激活**：搜索工作AWS Lambda被Amazon SQS消息触发，提取搜索参数并准备嵌入生成。
 
-<img src="blog-assets/flag/red/6.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **查询嵌入**：工作Lambda调用Amazon Bedrock的Marengo模型为搜索查询（文本或上传文件）生成嵌入向量。
+<img src="blog-assets/flag/red/6.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **查询嵌入**：工作AWS Lambda调用Amazon Bedrock的Marengo模型为搜索查询（文本或上传文件）生成嵌入向量。
 
-<img src="blog-assets/flag/red/7.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **向量搜索**：工作Lambda在OpenSearch中使用余弦相似度执行相似性搜索，对跨模态查询使用不同策略，然后在DynamoDB中更新结果供前端轮询。
+<img src="blog-assets/flag/red/7.png" width="30" height="30" style="display: inline; vertical-align: middle;"> **向量搜索**：工作AWS Lambda在Amazon OpenSearch Service中使用余弦相似度执行相似性搜索，对跨模态查询使用不同策略，然后在Amazon DynamoDB中更新结果供前端轮询。
 
 ### 工作流程集成
 
 两个工作流程共享通用基础设施组件但服务于不同目的：
 - **上传工作流程（1-6）**：专注于摄取和处理媒体文件以构建可搜索的向量数据库
 - **搜索工作流程（1-7）**：处理用户查询并从预构建的向量数据库中检索相关结果
-- **共享组件**：两个工作流程都利用相同的Bedrock模型、OpenSearch索引和核心AWS服务以保持一致性
+- **共享组件**：两个工作流程都利用相同的Amazon Bedrock模型、Amazon OpenSearch Service索引和核心AWS服务以保持一致性
 
 ### 关键技术特性
 
 - **统一向量空间**：所有媒体类型（图像、视频、音频、文本）都嵌入到相同的1024维空间中，实现真正的跨模态搜索
-- **异步处理**：Marengo Embed 2.7需要异步调用，通过SQS队列和工作Lambda函数处理
+- **异步处理**：Marengo Embed 2.7需要异步调用，通过Amazon SQS队列和工作AWS Lambda函数处理
 - **多模态搜索**：支持文本到图像、文本到视频、文本到音频和文件到文件的相似性搜索
 - **可扩展架构**：无服务器设计根据需求自动扩展，无需基础设施管理
 - **实时状态**：类似WebSocket的轮询提供处理状态和搜索结果的实时更新
@@ -382,47 +392,17 @@ def cross_modal_search(query_embedding, query_type):
 - **并发用户**：通过Lambda自动扩展
 - **存储效率**：1024维向量（每个嵌入4KB）
 
-### 准确性指标
-- **跨模态精度**：相关匹配85-95%
-- **同模态精度**：相似内容90-98%
-- **语义理解**：概念查询表现强劲
+
 
 ## 性能和可扩展性
 
 ### 资源配置
-- **Lambda内存**：嵌入处理1024MB
-- **Lambda超时**：大文件处理15分钟
-- **OpenSearch**：1024维向量空间
-- **文件大小限制**：每个文件10MB（API Gateway约束）
+- **AWS Lambda内存**：嵌入处理1024MB
+- **AWS Lambda超时**：大文件处理15分钟
+- **Amazon OpenSearch Service**：1024维向量空间
+- **文件大小限制**：每个文件10MB（Amazon API Gateway约束）
 
-### 优化策略
 
-**向量索引配置**：
-```python
-index_settings = {
-    "settings": {
-        "index": {
-            "knn": True,
-            "knn.algo_param.ef_search": 512,
-            "number_of_shards": 2,
-            "number_of_replicas": 1
-        }
-    },
-    "mappings": {
-        "properties": {
-            "visual_embedding": {
-                "type": "knn_vector",
-                "dimension": 1024,
-                "method": {
-                    "name": "hnsw",
-                    "space_type": "cosinesimil",
-                    "engine": "nmslib"
-                }
-            }
-        }
-    }
-}
-```
 
 ## 最佳实践和经验教训
 
@@ -497,11 +477,11 @@ aws s3 sync ../frontend/ s3://${SERVICE_PREFIX}-frontend/
 ### 所需AWS权限
 部署需要以下权限：
 - Amazon Bedrock模型访问
-- Lambda函数创建和执行
-- OpenSearch Serverless集合管理
-- S3存储桶操作
-- API Gateway配置
-- CloudFront分发设置
+- AWS Lambda函数创建和执行
+- Amazon OpenSearch Serverless集合管理
+- Amazon S3存储桶操作
+- Amazon API Gateway配置
+- Amazon CloudFront分发设置
 
 ## 用例和应用
 
@@ -533,7 +513,7 @@ def get_cached_embedding(file_hash, media_type):
     """实现缓存以减少API调用"""
     cache_key = f"{file_hash}:{media_type}"
     
-    # 检查DynamoDB缓存
+    # 检查Amazon DynamoDB缓存
     cached_result = dynamodb_table.get_item(Key={'cache_key': cache_key})
     
     if 'Item' in cached_result:
@@ -547,7 +527,7 @@ def get_cached_embedding(file_hash, media_type):
         Item={
             'cache_key': cache_key,
             'embedding': embedding,
-            'ttl': int(time.time()) + 86400  # 24小时TTL
+            'ttl': int(time.time()) + ttl_seconds  # 设置适当的TTL
         }
     )
     
@@ -566,7 +546,7 @@ def get_cached_embedding(file_hash, media_type):
 
 ### 访问控制
 ```python
-# Lambda执行角色的IAM策略
+# AWS Lambda执行角色的IAM策略
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -626,13 +606,9 @@ Amazon Bedrock上的TwelveLabs Marengo Embed 2.7代表了多模态AI能力的重
 
 - [Amazon Bedrock用户指南](https://docs.aws.amazon.com/bedrock/)
 - [TwelveLabs Marengo模型文档](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-marengo.html)
-- [OpenSearch Service开发者指南](https://docs.aws.amazon.com/opensearch-service/)
+- [Amazon OpenSearch Service开发者指南](https://docs.aws.amazon.com/opensearch-service/)
 - [AWS CDK开发者指南](https://docs.aws.amazon.com/cdk/)
 
-## 关于作者
 
-*[作者简介将在此处用于AWS博客提交]*
 
----
-
-*本文中显示的示例代码和架构模式可在[GitHub仓库](repository-link)中获得。所有代码都已在生产AWS环境中测试和验证。*
+*本文中显示的示例代码和架构模式可在[GitHub仓库](https://github.com/valyli/aws-multimodal-embedding)中获得。*
