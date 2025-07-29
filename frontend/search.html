@@ -188,17 +188,20 @@
         </div>
         
         <!-- 搜索模式选择（仅视频文件显示） -->
-        <div id="searchModeArea" style="margin-bottom: 20px; text-align: center; display: none;">
+        <div id="searchModeArea" style="margin-bottom: 20px; text-align: center; display: none; opacity: 0.6;">
             <label style="font-weight: bold; margin-right: 15px;">视频搜索模式：</label>
             <label style="margin-right: 15px;">
-                <input type="radio" name="searchMode" value="visual" checked> 🖼️ 视觉相似
+                <input type="radio" name="searchMode" value="visual" checked disabled> 🖼️ 视觉相似
             </label>
-            <label style="margin-right: 15px;">
-                <input type="radio" name="searchMode" value="text"> 📝 语义相似
+            <label style="margin-right: 15px; color: #999;">
+                <input type="radio" name="searchMode" value="text" disabled> 📝 语义相似
             </label>
-            <label style="margin-right: 15px;">
-                <input type="radio" name="searchMode" value="audio"> 🎧 音频相似
+            <label style="margin-right: 15px; color: #999;">
+                <input type="radio" name="searchMode" value="audio" disabled> 🎧 音频相似
             </label>
+            <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                <em>注意：多模式搜索功能正在开发中，目前仅支持视觉相似性搜索</em>
+            </div>
         </div>
         
         <div class="preview" id="preview" style="display: none;">
