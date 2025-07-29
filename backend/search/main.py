@@ -258,13 +258,13 @@ def extract_s3_uri(s3_uri):
 
 def search_similar_images(client, query_vector, top_k=5):
     """
-    在OpenSearch中搜索相似图像
+    在OpenSearch中搜索相似图像 - 使用visual_embedding字段
     """
     query = {
         "size": top_k,
         "query": {
             "knn": {
-                "embedding_vector": {
+                "visual_embedding": {
                     "vector": query_vector,
                     "k": top_k
                 }

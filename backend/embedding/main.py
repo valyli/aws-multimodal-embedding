@@ -46,15 +46,15 @@ def handler(event, context):
             if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
                 # 图片文件 - 使用Marengo模型
                 embedding = get_embedding_from_marengo('image', s3_uri, bucket_name)
-                store_embedding(opensearch_client, s3_uri, embedding, file_ext)
+                store_embedding(opensearch_client, 'image', s3_uri, embedding, file_ext)
             elif file_ext in ['mp4', 'mov']:
                 # 视频文件 - 使用Marengo模型
                 embedding = get_embedding_from_marengo('video', s3_uri, bucket_name)
-                store_embedding(opensearch_client, s3_uri, embedding, file_ext)
+                store_embedding(opensearch_client, 'video', s3_uri, embedding, file_ext)
             elif file_ext in ['wav', 'mp3', 'm4a']:
                 # 音频文件 - 使用Marengo模型的audio功能
                 embedding = get_embedding_from_marengo('audio', s3_uri, bucket_name)
-                store_embedding(opensearch_client, s3_uri, embedding, file_ext)
+                store_embedding(opensearch_client, 'audio', s3_uri, embedding, file_ext)
             else:
                 print(f"Unsupported file type: {file_ext}")
                 continue
@@ -103,7 +103,8 @@ def create_index_if_not_exists(client):
         index_body = {
             'settings': {
                 'index': {
-                    'knn': True
+                    'knn': True,
+                    "mapping.total_fields.limit": 5000
                 }
             },
             'mappings': {
@@ -121,6 +122,7 @@ def create_index_if_not_exists(client):
                         'dimension': VECTOR_DIMENSION
                     },
                     's3_uri': {'type': 'keyword'},
+                    'media_type': {'type': 'keyword'},
                     'file_type': {'type': 'keyword'},
                     'timestamp': {'type': 'date'}
                 }
@@ -220,23 +222,23 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                             output_resp = s3_client.get_object(Bucket=alt_bucket, Key=output_key)
                             output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
                             print("output_json", output_json)
-                            # 处理视频的多个embedding
+                            # 处理不同媒体类型的embedding
+                            embeddings = {}
                             if media_type == "video":
-                                embeddings = {}
                                 for item in output_json["data"]:
                                     if item["embeddingOption"] == "visual-image":
-                                        embeddings["visualImageEmbedding"] = item["embedding"]
+                                        embeddings["visual_embedding"] = item["embedding"]
                                     elif item["embeddingOption"] == "visual-text":
-                                        embeddings["visualTextEmbedding"] = item["embedding"]
+                                        embeddings["text_embedding"] = item["embedding"]
                                     elif item["embeddingOption"] == "audio":
-                                        embeddings["audioEmbedding"] = item["embedding"]
-                                return embeddings
+                                        embeddings["audio_embedding"] = item["embedding"]
                             elif media_type == "audio":
-                                # 音频文件只有audio embedding
-                                return {"audioEmbedding": output_json["data"][0]["embedding"]}
-                            else:
-                                # 图片只有一个embedding
-                                return output_json["data"][0]
+                                embeddings["audio_embedding"] = output_json["data"][0]["embedding"]
+                            elif media_type == "image":
+                                embeddings["visual_embedding"] = output_json["data"][0]["embedding"]
+                            elif media_type == "text":
+                                embeddings["text_embedding"] = output_json["data"][0]["embedding"]
+                            return embeddings
                         except Exception as s3_error:
                             print(f"Failed to read output.json from path: {output_key}")
                             raise s3_error
@@ -276,28 +278,24 @@ def extract_s3_uri(s3_uri):
     
     return bucket, prefix
 
-def store_embedding(client, s3_uri, embedding_data, file_type):
+def store_embedding(client, media_type, s3_uri, embedding_data, file_type):
     """
     存储embedding到OpenSearch（统一向量空间）
     """
     document = {
         's3_uri': s3_uri,
+        'media_type': media_type,
         'file_type': file_type,
         'timestamp': datetime.now().isoformat()
     }
     
-    # 根据embedding数据结构存储
-    if 'embedding' in embedding_data:
-        # 图片只有一个视觉embedding
-        document['visual_embedding'] = embedding_data['embedding']
-    else:
-        # 视频或音频有多种embedding类型
-        if 'visualImageEmbedding' in embedding_data:
-            document['visual_embedding'] = embedding_data['visualImageEmbedding']
-        if 'visualTextEmbedding' in embedding_data:
-            document['text_embedding'] = embedding_data['visualTextEmbedding']
-        if 'audioEmbedding' in embedding_data:
-            document['audio_embedding'] = embedding_data['audioEmbedding']
+    # 存储不同类型的embedding
+    if 'visual_embedding' in embedding_data:
+        document['visual_embedding'] = embedding_data['visual_embedding']
+    if 'text_embedding' in embedding_data:
+        document['text_embedding'] = embedding_data['text_embedding']
+    if 'audio_embedding' in embedding_data:
+        document['audio_embedding'] = embedding_data['audio_embedding']
     
     response = client.index(
         index=OPENSEARCH_INDEX,
