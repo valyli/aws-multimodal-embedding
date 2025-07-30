@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import boto3
+import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from aws_requests_auth.aws_auth import AWSRequestsAuth
 
@@ -10,6 +11,9 @@ INDEX_NAME = "embeddings"
 
 def clear_opensearch_data():
     """清空OpenSearch中的所有数据"""
+    
+    # 获取配置
+    region = os.environ.get('AWS_REGION', boto3.Session().region_name or 'us-east-1')
     
     # 获取AWS凭证
     session = boto3.Session()
@@ -21,7 +25,7 @@ def clear_opensearch_data():
         aws_secret_access_key=credentials.secret_key,
         aws_token=credentials.token,
         aws_host=OPENSEARCH_ENDPOINT.replace('https://', ''),
-        aws_region='us-east-1',
+        aws_region=region,
         aws_service='aoss'
     )
     

@@ -3,10 +3,15 @@
 初始化OpenSearch Serverless索引
 """
 import boto3
+import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from aws_requests_auth.aws_auth import AWSRequestsAuth
 
 def create_index():
+    # 获取配置
+    region = os.environ.get('AWS_REGION', boto3.Session().region_name or 'us-east-1')
+    host = os.environ.get('OPENSEARCH_HOST', f'multimodal-embeddings.{region}.aoss.amazonaws.com')
+    
     # AWS认证
     session = boto3.Session()
     credentials = session.get_credentials()
@@ -14,14 +19,14 @@ def create_index():
         aws_access_key=credentials.access_key,
         aws_secret_access_key=credentials.secret_key,
         aws_token=credentials.token,
-        aws_host='multimodal-embeddings.us-east-1.aoss.amazonaws.com',
-        aws_region='us-east-1',
+        aws_host=host,
+        aws_region=region,
         aws_service='aoss'
     )
     
     # OpenSearch客户端
     client = OpenSearch(
-        hosts=[{'host': 'multimodal-embeddings.us-east-1.aoss.amazonaws.com', 'port': 443}],
+        hosts=[{'host': host, 'port': 443}],
         http_auth=awsauth,
         use_ssl=True,
         verify_certs=True,

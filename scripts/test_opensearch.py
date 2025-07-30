@@ -4,6 +4,7 @@
 """
 import boto3
 import json
+import os
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
 OPENSEARCH_ENDPOINT = 'https://p3ipsonhfnl95wed00cj.us-east-1.aoss.amazonaws.com'
@@ -12,7 +13,7 @@ OPENSEARCH_INDEX = 'embeddings'
 def get_opensearch_client():
     """初始化OpenSearch客户端"""
     host = OPENSEARCH_ENDPOINT.replace("https://", "")
-    region = 'us-east-1'
+    region = os.environ.get('AWS_REGION', boto3.Session().region_name or 'us-east-1')
     
     # 创建AWS签名认证
     credentials = boto3.Session().get_credentials()
