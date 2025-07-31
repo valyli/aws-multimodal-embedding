@@ -16,7 +16,7 @@ bedrock_client = boto3.client('bedrock-runtime')
 SEARCH_TABLE_NAME = os.environ.get('SEARCH_TABLE_NAME')
 OPENSEARCH_ENDPOINT = os.environ.get('OPENSEARCH_ENDPOINT')
 OPENSEARCH_INDEX = os.environ.get('OPENSEARCH_INDEX', 'embeddings')
-UPLOAD_BUCKET = 'cloudscape-demo-uploads'
+UPLOAD_BUCKET = os.environ.get('UPLOAD_BUCKET', 'multimodal-usw2-uploads')
 MARENG0_MODEL_ID = 'twelvelabs.marengo-embed-2-7-v1:0'
 
 def handler(event, context):

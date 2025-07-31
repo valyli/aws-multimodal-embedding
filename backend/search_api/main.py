@@ -13,7 +13,7 @@ s3_client = boto3.client('s3')
 # 配置
 SEARCH_TABLE_NAME = os.environ.get('SEARCH_TABLE_NAME')
 SEARCH_QUEUE_URL = os.environ.get('SEARCH_QUEUE_URL')
-UPLOAD_BUCKET = 'cloudscape-demo-uploads'
+UPLOAD_BUCKET = os.environ.get('UPLOAD_BUCKET', 'multimodal-usw2-uploads')
 
 def handler(event, context):
     """

@@ -1,0 +1,17 @@
+{
+  "name": "aws-multimodal-embedding-infrastructure",
+  "version": "1.0.0",
+  "description": "AWS CDK infrastructure for multimodal embedding search system",
+  "main": "app.py",
+  "scripts": {
+    "build": "echo 'No build step required'",
+    "test": "echo 'No tests specified'"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.0.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.0.0",
+    "constructs": "^10.0.0"
+  }
+}

@@ -46,11 +46,11 @@ pip3 install -r requirements.txt
 
 # CDK Bootstrap (如果需要)
 echo "🏗️ 初始化CDK..."
-cdk bootstrap --region $AWS_REGION
+AWS_REGION=$AWS_REGION cdk bootstrap --region $AWS_REGION
 
 # 部署基础设施
 echo "🚀 部署基础设施..."
-cdk deploy --require-approval never
+AWS_REGION=$AWS_REGION cdk deploy --require-approval never
 
 # 获取输出信息
 echo "📊 获取部署信息..."

@@ -134,7 +134,8 @@ class CloudscapeStack(Stack):
             memory_size=512,
             environment={
                 "SEARCH_TABLE_NAME": search_table.table_name,
-                "SEARCH_QUEUE_URL": search_queue.queue_url
+                "SEARCH_QUEUE_URL": search_queue.queue_url,
+                "UPLOAD_BUCKET": upload_bucket.bucket_name
             }
         )
         
@@ -149,7 +150,8 @@ class CloudscapeStack(Stack):
             memory_size=1024,
             layers=[opensearch_layer],
             environment={
-                "SEARCH_TABLE_NAME": search_table.table_name
+                "SEARCH_TABLE_NAME": search_table.table_name,
+                "UPLOAD_BUCKET": upload_bucket.bucket_name
             }
         )
         
@@ -352,7 +354,7 @@ class CloudscapeStack(Stack):
         search_integration = apigateway.LambdaIntegration(
             search_api_function,
             proxy=True,
-            timeout=Duration.seconds(30)
+            timeout=Duration.seconds(29)
         )
         
         # 在根路径添加方法
