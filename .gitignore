@@ -3,6 +3,7 @@ cdk.out/
 *.js
 *.d.ts
 node_modules/
+package-lock.json
 
 # Python
 __pycache__/
