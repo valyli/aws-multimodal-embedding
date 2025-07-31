@@ -383,7 +383,7 @@
                 }
 
                 // 启动搜索任务
-                const response = await fetch('https://239c7yyacl.execute-api.us-east-1.amazonaws.com/prod/', {
+                const response = await fetch('{{SEARCH_API_ENDPOINT}}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -415,7 +415,7 @@
             
             const poll = async () => {
                 try {
-                    const response = await fetch(`https://239c7yyacl.execute-api.us-east-1.amazonaws.com/prod/status/${searchId}`);
+                    const response = await fetch(`{{SEARCH_API_ENDPOINT}}status/${searchId}`);
                     const result = await response.json();
                     
                     if (response.ok) {

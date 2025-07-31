@@ -70,7 +70,7 @@ FRONTEND_BUCKET="${SERVICE_PREFIX}-frontend"
 # 更新搜索页面API端点
 echo "🔄 更新搜索页面配置..."
 cd ../frontend
-sed -i.bak "s|https://.*\.execute-api\..*\.amazonaws\.com/prod/|$SEARCH_API_ENDPOINT|g" search.html
+sed -i.bak "s|{{SEARCH_API_ENDPOINT}}|$SEARCH_API_ENDPOINT|g" search.html
 
 # 上传前端文件
 echo "📤 上传前端文件..."
