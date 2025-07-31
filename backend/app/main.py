@@ -36,6 +36,86 @@ def handler(event, context):
             ],
             "total": 2
         }
+    elif path == '/api/materials' and method == 'GET':
+        try:
+            # 获取S3中的所有文件
+            s3_objects = s3_client.list_objects_v2(Bucket=BUCKET_NAME)
+            materials = []
+            
+            if 'Contents' in s3_objects:
+                # 初始化OpenSearch客户端
+                from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
+                import boto3
+                
+                opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT')
+                if opensearch_endpoint:
+                    host = opensearch_endpoint.replace('https://', '')
+                    region = os.environ.get('AWS_REGION', 'us-east-1')
+                    credentials = boto3.Session().get_credentials()
+                    auth = AWSV4SignerAuth(credentials, region, 'aoss')
+                    
+                    opensearch_client = OpenSearch(
+                        hosts=[{'host': host, 'port': 443}],
+                        http_auth=auth,
+                        use_ssl=True,
+                        verify_certs=True,
+                        connection_class=RequestsHttpConnection
+                    )
+                
+                for obj in s3_objects['Contents']:
+                    key = obj['Key']
+                    if key.startswith('bedrock-outputs/') or key.startswith('temp/'):
+                        continue
+                        
+                    # 生成预签名URL
+                    file_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': BUCKET_NAME, 'Key': key},
+                        ExpiresIn=3600
+                    )
+                    
+                    # 检查OpenSearch中的embedding状态
+                    embeddings = []
+                    if opensearch_endpoint:
+                        try:
+                            s3_uri = f"s3://{BUCKET_NAME}/{key}"
+                            search_result = opensearch_client.search(
+                                index='embeddings',
+                                body={
+                                    'query': {'term': {'s3_uri': s3_uri}},
+                                    'size': 1
+                                }
+                            )
+                            
+                            if search_result['hits']['total']['value'] > 0:
+                                doc = search_result['hits']['hits'][0]['_source']
+                                if 'visual_embedding' in doc:
+                                    embeddings.append('🖼️ 视觉')
+                                if 'text_embedding' in doc:
+                                    embeddings.append('📝 文本')
+                                if 'audio_embedding' in doc:
+                                    embeddings.append('🎧 音频')
+                        except:
+                            pass
+                    
+                    materials.append({
+                        'key': key,
+                        'name': key.split('/')[-1],
+                        'size': obj['Size'],
+                        'lastModified': obj['LastModified'].isoformat(),
+                        'url': file_url,
+                        'embeddings': embeddings,
+                        'hasEmbedding': len(embeddings) > 0
+                    })
+            
+            response_body = {
+                'materials': materials,
+                'total': len(materials)
+            }
+            
+        except Exception as e:
+            response_body = {'error': str(e)}
+            status_code = 500
     elif path == '/api/upload' and method == 'POST':
         try:
             body = json.loads(event.get('body', '{}'))

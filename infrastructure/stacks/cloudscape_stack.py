@@ -33,6 +33,14 @@ class CloudscapeStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # 创建OpenSearch Layer
+        opensearch_layer = _lambda.LayerVersion(
+            self, "OpenSearchLayer",
+            code=_lambda.Code.from_asset("../backend/layers/opensearch_layer"),
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
+            layer_version_name=f"{SERVICE_PREFIX}-opensearch"
+        )
+        
         # Lambda函数
         lambda_function = _lambda.Function(
             self, "ApiFunction",
@@ -41,7 +49,8 @@ class CloudscapeStack(Stack):
             handler="main.handler",
             code=_lambda.Code.from_asset("../backend/app"),
             timeout=Duration.seconds(30),
-            memory_size=512
+            memory_size=512,
+            layers=[opensearch_layer]
         )
 
         # API Gateway使用5分钟超时
@@ -85,7 +94,7 @@ class CloudscapeStack(Stack):
         )
         
         # 给Lambda授权访问上传存储桶
-        upload_bucket.grant_write(lambda_function)
+        upload_bucket.grant_read_write(lambda_function)
         
         # DynamoDB表存储搜索任务状态
         search_table = dynamodb.Table(
@@ -101,14 +110,6 @@ class CloudscapeStack(Stack):
             self, "SearchQueue",
             queue_name=f"{SERVICE_PREFIX}-search-queue",
             visibility_timeout=Duration.minutes(10)
-        )
-        
-        # 创建OpenSearch Layer
-        opensearch_layer = _lambda.LayerVersion(
-            self, "OpenSearchLayer",
-            code=_lambda.Code.from_asset("../backend/layers/opensearch_layer"),
-            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
-            layer_version_name=f"{SERVICE_PREFIX}-opensearch"
         )
         
         # Embedding处理Lambda
@@ -214,6 +215,9 @@ class CloudscapeStack(Stack):
         data_policy.add_dependency(opensearch_collection)
         
         # 为Lambda添加环境变量
+        lambda_function.add_environment("UPLOAD_BUCKET", upload_bucket.bucket_name)
+        lambda_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
+        
         embedding_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         embedding_function.add_environment("OPENSEARCH_INDEX", "embeddings")
         
@@ -235,7 +239,7 @@ class CloudscapeStack(Stack):
         )
         
         # 给Lambda授权
-        for func in [embedding_function, search_api_function, search_worker_function]:
+        for func in [lambda_function, embedding_function, search_api_function, search_worker_function]:
             func.add_to_role_policy(
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,

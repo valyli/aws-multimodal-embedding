@@ -85,6 +85,7 @@ if [ ! -z "$MAIN_API_ENDPOINT" ]; then
     sed -i "s|{{SEARCH_API_ENDPOINT}}|$SEARCH_API_ENDPOINT|g" $TEMP_DIR/search.html
     sed -i "s|{{MAIN_API_ENDPOINT}}|$MAIN_API_ENDPOINT|g" $TEMP_DIR/index.html
     sed -i "s|{{MAIN_API_ENDPOINT}}|$MAIN_API_ENDPOINT|g" $TEMP_DIR/upload.html
+    sed -i "s|{{MAIN_API_ENDPOINT}}|$MAIN_API_ENDPOINT|g" $TEMP_DIR/materials.html
     echo "✅ 所有页面API端点已更新: $MAIN_API_ENDPOINT"
 fi
 
