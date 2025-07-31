@@ -1,7 +1,7 @@
 import os
 
 # 服务前缀配置 - 修改此处即可部署新实例
-SERVICE_PREFIX = os.getenv("SERVICE_PREFIX", "multimodal-usw2")
+SERVICE_PREFIX = os.getenv("SERVICE_PREFIX", "multimodal-search")
 
 # AWS资源命名
 LAMBDA_FUNCTION_NAME = f"{SERVICE_PREFIX}-api"
