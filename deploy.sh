@@ -67,14 +67,43 @@ SEARCH_API_ENDPOINT=$(aws cloudformation describe-stacks \
 
 FRONTEND_BUCKET="${SERVICE_PREFIX}-frontend"
 
-# 更新搜索页面API端点
-echo "🔄 更新搜索页面配置..."
-cd ../frontend
-sed -i.bak "s|{{SEARCH_API_ENDPOINT}}|$SEARCH_API_ENDPOINT|g" search.html
+# 更新前端页面API端点（在临时目录中处理）
+echo "🔄 更新前端页面配置..."
+cd ../
+TEMP_DIR="/tmp/frontend-deploy-$$"
+mkdir -p $TEMP_DIR
+cp -r frontend/* $TEMP_DIR/
+
+# 获取主API端点
+MAIN_API_ENDPOINT=$(aws cloudformation describe-stacks \
+    --stack-name $STACK_NAME \
+    --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayEndpoint5AA8EC3A`].OutputValue' \
+    --output text)
+
+if [ ! -z "$MAIN_API_ENDPOINT" ]; then
+    # 在临时目录中更新API端点
+    sed -i "s|{{SEARCH_API_ENDPOINT}}|$SEARCH_API_ENDPOINT|g" $TEMP_DIR/search.html
+    sed -i "s|{{MAIN_API_ENDPOINT}}|$MAIN_API_ENDPOINT|g" $TEMP_DIR/index.html
+    sed -i "s|{{MAIN_API_ENDPOINT}}|$MAIN_API_ENDPOINT|g" $TEMP_DIR/upload.html
+    echo "✅ 所有页面API端点已更新: $MAIN_API_ENDPOINT"
+fi
 
 # 上传前端文件
 echo "📤 上传前端文件..."
-aws s3 cp . s3://$FRONTEND_BUCKET/ --recursive --exclude "*.bak"
+aws s3 cp $TEMP_DIR s3://$FRONTEND_BUCKET/ --recursive
+
+# 清理临时目录
+rm -rf $TEMP_DIR
+
+# 清理CloudFront缓存
+echo "🔄 清理CloudFront缓存..."
+DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$CLOUDFRONT_DOMAIN'].Id" --output text)
+if [ ! -z "$DISTRIBUTION_ID" ]; then
+    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" >/dev/null
+    echo "✅ CloudFront缓存清理已启动"
+else
+    echo "⚠️ 未找到CloudFront分发"
+fi
 
 cd ..
 

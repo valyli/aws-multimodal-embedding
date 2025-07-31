@@ -2,10 +2,11 @@ import json
 import boto3
 import base64
 import uuid
+import os
 from datetime import datetime
 
 s3_client = boto3.client('s3')
-BUCKET_NAME = 'cloudscape-demo-uploads'
+BUCKET_NAME = os.environ.get('UPLOAD_BUCKET', 'multimodal-search-uploads')
 ALLOWED_TYPES = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov', 'wav', 'mp3', 'm4a']
 
 def handler(event, context):
@@ -18,13 +19,14 @@ def handler(event, context):
     # 路由处理
     if path == '/' and method == 'GET':
         response_body = {
-            "message": "Hello from cloudscape-demo!", 
-            "status": "running"
+            "message": "Hello from multimodal-search!", 
+            "status": "running",
+            "bucket": BUCKET_NAME
         }
     elif path == '/health' and method == 'GET':
         response_body = {
             "status": "healthy", 
-            "service": "cloudscape-demo"
+            "service": "multimodal-search"
         }
     elif path == '/api/data' and method == 'GET':
         response_body = {
