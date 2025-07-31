@@ -85,18 +85,17 @@ def process_search(message):
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
         
-        # 根据媒体类型选择正确的embedding字段
-        if media_type == 'audio':
+        # 根据搜索模式选择正确的embedding字段
+        if search_mode == 'audio':
             embedding_field = 'audio_embedding'
-        else:
+        elif search_mode == 'visual-text':
+            embedding_field = 'text_embedding'
+        else:  # visual-image 或其他
             embedding_field = 'visual_embedding'
         
         s3_uri = f"s3://{UPLOAD_BUCKET}/{s3_key}"
-        # 根据媒体类型选择搜索模式
-        if media_type == 'audio':
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'audio')
-        else:
-            query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, 'visual-image')
+        # 使用用户选择的搜索模式
+        query_embedding = get_embedding_from_marengo(media_type, s3_uri, UPLOAD_BUCKET, search_mode)
         
         # 清理临时文件
         try:
@@ -270,20 +269,23 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name, search_mode='vis
                         output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
                         
                         # 根据搜索模式返回对应的embedding
-                        data = output_json["data"][0]
                         if media_type == "audio":
                             # 音频文件直接返回embedding
-                            return data['embedding']
-                        elif search_mode == 'visual-image' and 'visualImageEmbedding' in data:
-                            return data['visualImageEmbedding']
-                        elif search_mode == 'visual-text' and 'visualTextEmbedding' in data:
-                            return data['visualTextEmbedding']
-                        elif search_mode == 'audio' and 'audioEmbedding' in data:
-                            return data['audioEmbedding']
-                        elif 'embedding' in data:
-                            return data['embedding']
+                            return output_json["data"][0]['embedding']
+                        elif media_type == "video":
+                            # 视频文件根据搜索模式返回对应embedding
+                            for item in output_json["data"]:
+                                if search_mode == 'visual-image' and item.get("embeddingOption") == "visual-image":
+                                    return item["embedding"]
+                                elif search_mode == 'visual-text' and item.get("embeddingOption") == "visual-text":
+                                    return item["embedding"]
+                                elif search_mode == 'audio' and item.get("embeddingOption") == "audio":
+                                    return item["embedding"]
+                            # 如果没有找到对应模式，返回第一个
+                            return output_json["data"][0]["embedding"]
                         else:
-                            raise ValueError(f"No {search_mode} embedding found in output.json")
+                            # 图片文件直接返回embedding
+                            return output_json["data"][0]['embedding']
                         
                 elif res["status"] in ("Failed", "Cancelled"):
                     error_msg = res.get("failureMessage", "Unknown error")
@@ -337,7 +339,7 @@ def get_opensearch_client():
     )
     return client
 
-def search_similar_embeddings(client, query_embedding, embedding_field, search_media_type='file', top_k=10):
+def search_similar_embeddings(client, query_embedding, embedding_field, search_media_type='file', top_k=20):
     """在OpenSearch中搜索相似embedding - 智能跨模态搜索"""
     results = []
     embedding_types = ['visual_embedding', 'text_embedding', 'audio_embedding']
