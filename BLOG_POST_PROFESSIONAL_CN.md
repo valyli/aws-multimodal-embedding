@@ -507,39 +507,9 @@ aws s3 sync ../frontend/ s3://${SERVICE_PREFIX}-frontend/
 - **相似内容推荐**：建议相关视频、音乐或图像
 - **内容审核**：识别相似内容以执行政策
 
-## 成本优化
 
-### 嵌入缓存策略
-```python
-def get_cached_embedding(file_hash, media_type):
-    """实现缓存以减少API调用"""
-    cache_key = f"{file_hash}:{media_type}"
-    
-    # 检查Amazon DynamoDB缓存
-    cached_result = dynamodb_table.get_item(Key={'cache_key': cache_key})
-    
-    if 'Item' in cached_result:
-        return cached_result['Item']['embedding']
-    
-    # 如果未缓存则生成新嵌入
-    embedding = generate_embedding(media_type, s3_uri, bucket_name)
-    
-    # 存储在缓存中
-    dynamodb_table.put_item(
-        Item={
-            'cache_key': cache_key,
-            'embedding': embedding,
-            'ttl': int(time.time()) + ttl_seconds  # 设置适当的TTL
-        }
-    )
-    
-    return embedding
-```
 
-### 批处理
-对于大规模部署，考虑实现批处理以优化成本和吞吐量。
-
-## 安全考虑
+## 安全建议
 
 ### 数据隐私
 - 所有媒体文件在您的AWS账户内处理
@@ -575,11 +545,40 @@ def get_cached_embedding(file_hash, media_type):
 
 ## 未来增强
 
-### 计划功能
+### 可增加功能
 - **实时处理**：实时内容的流式嵌入
 - **高级过滤**：基于元数据的搜索细化
 - **多语言支持**：扩展语言能力
 - **自定义模型**：针对特定领域用例的微调
+- **成本优化**：嵌入缓存策略和批处理优化，减少API调用成本
+
+```python
+def get_cached_embedding(file_hash, media_type):
+    """实现缓存以减少API调用"""
+    cache_key = f"{file_hash}:{media_type}"
+    
+    # 检查Amazon DynamoDB缓存
+    cached_result = dynamodb_table.get_item(Key={'cache_key': cache_key})
+    
+    if 'Item' in cached_result:
+        return cached_result['Item']['embedding']
+    
+    # 如果未缓存则生成新嵌入
+    embedding = generate_embedding(media_type, s3_uri, bucket_name)
+    
+    # 存储在缓存中
+    dynamodb_table.put_item(
+        Item={
+            'cache_key': cache_key,
+            'embedding': embedding,
+            'ttl': int(time.time()) + ttl_seconds  # 设置适当的TTL
+        }
+    )
+    
+    return embedding
+```
+
+对于大规模部署，考虑实现批处理以优化成本和吞吐量。
 
 ### 集成机会
 - **Amazon Rekognition**：增强图像分析
