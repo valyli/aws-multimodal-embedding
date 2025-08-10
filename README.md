@@ -1,53 +1,59 @@
-# AWS Cloudscape 程序
+# TwelveLabs Marengo Embed 2.7 Multimodal Search System on Amazon Bedrock
 
-基于AWS无服务器架构的Cloudscape应用，使用API Gateway + Lambda (FastAPI) + S3 + CloudFront。
+A multimodal search application based on AWS serverless architecture, using Amazon Bedrock + TwelveLabs Marengo Embed 2.7 + OpenSearch + Lambda + S3 + CloudFront. This project was implemented entirely through AI-assisted development, demonstrating the powerful capabilities of cross-modal AI search.
 
-## 快速开始
+## Quick Start
 
-### 1. 配置服务前缀
-编辑 `config/settings.py` 修改 `SERVICE_PREFIX` 变量：
+### 1. Configure Service Prefix
+Edit `config/settings.py` to modify the `SERVICE_PREFIX` variable:
 ```python
 SERVICE_PREFIX = "your-project-name"
 ```
 
-### 2. 部署
+### 2. Deploy
 ```bash
 ./deploy.sh
 ```
 
-### 3. 上传前端
-部署完成后，将 `frontend/build/` 目录内容上传到创建的S3存储桶。
+### 3. Upload Frontend
+After deployment, upload the contents of the `frontend/build/` directory to the created S3 bucket.
 
-## 项目结构
+## Project Structure
 ```
-├── config/settings.py          # 配置文件
-├── backend/                    # FastAPI后端
-├── frontend/                   # React前端
-├── infrastructure/             # CDK基础设施
-└── deploy.sh                   # 部署脚本
+├── config/settings.py          # Configuration file
+├── backend/                    # FastAPI backend
+├── frontend/                   # React frontend
+├── infrastructure/             # CDK infrastructure
+└── deploy.sh                   # Deployment script
 ```
 
-## 自定义配置
-- 修改 `SERVICE_PREFIX` 即可部署新实例
-- 支持环境变量 `SERVICE_PREFIX` 和 `AWS_REGION`
-- 所有AWS资源自动添加前缀命名
+## Custom Configuration
+- Modify `SERVICE_PREFIX` to deploy new instances
+- Supports environment variables `SERVICE_PREFIX` and `AWS_REGION`
+- All AWS resources automatically prefixed with naming
 
-## 架构特点
-- ✅ 完全无服务器，无EC2暴露
-- ✅ 使用Python CDK管理基础设施
-- ✅ 支持多环境部署
-- ✅ 代码高度可复用
+## Architecture Features
+- ✅ Fully serverless, no EC2 exposure
+- ✅ Infrastructure managed with Python CDK
+- ✅ Multi-environment deployment support
+- ✅ Highly reusable code
+- ✅ Unified 1024-dimensional vector space supporting cross-modal search
+- ✅ Completely AI-assisted development with zero manual coding
 
-## 测试素材资源
+## Related Documentation
+- [Detailed Deployment Guide](DEPLOYMENT.md)
+- [English Technical Blog](BLOG_POST_PROFESSIONAL.md)
 
-为了充分测试多模态搜索功能，可以从以下AWS官方资源获取高质量的测试素材：
+## Test Material Resources
 
-### 图片素材
-- **Amazon Nova Canvas示例**: https://www.amazon.science/blog/amazon-nova-canvas-examples
-- **Nova Creative创意素材**: https://aws.amazon.com/ai/generative-ai/nova/creative/
-- **Nova Canvas视觉指南**: https://aws.amazon.com/blogs/machine-learning/exploring-creative-possibilities-a-visual-guide-to-amazon-nova-canvas/
+To fully test multimodal search functionality, you can obtain high-quality test materials from the following AWS official resources:
 
-### 视频素材
-- **Luma AI Ray 2视频模型示例**: https://aws.amazon.com/blogs/aws/luma-ai-ray-2-video-model-is-now-available-in-amazon-bedrock/
+### Image Materials
+- **Amazon Nova Canvas Examples**: https://www.amazon.science/blog/amazon-nova-canvas-examples
+- **Nova Creative Materials**: https://aws.amazon.com/ai/generative-ai/nova/creative/
+- **Nova Canvas Visual Guide**: https://aws.amazon.com/blogs/machine-learning/exploring-creative-possibilities-a-visual-guide-to-amazon-nova-canvas/
 
-这些资源提供了丰富的多模态内容，非常适合测试TwelveLabs Marengo Embed 2.7的跨模态搜索能力。
+### Video Materials
+- **Luma AI Ray 2 Video Model Examples**: https://aws.amazon.com/blogs/aws/luma-ai-ray-2-video-model-is-now-available-in-amazon-bedrock/
+
+These resources provide rich multimodal content, perfect for testing the cross-modal search capabilities of TwelveLabs Marengo Embed 2.7.

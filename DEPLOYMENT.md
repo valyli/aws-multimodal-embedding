@@ -1,22 +1,22 @@
-# AWS 多模态搜索系统部署文档
+# AWS Multimodal Search System Deployment Guide
 
-## 系统概述
+## System Overview
 
-基于 AWS 无服务器架构的多模态搜索系统，支持图片、视频和文本的智能搜索。使用 TwelveLabs Marengo 模型进行多模态 embedding 生成，OpenSearch 进行向量搜索。
+A multimodal search system based on AWS serverless architecture that supports intelligent search across images, videos, and text. Uses TwelveLabs Marengo model for multimodal embedding generation and OpenSearch for vector search.
 
-## 架构组件
+## Architecture Components
 
-- **前端**: React 静态网站 (CloudFront + S3)
+- **Frontend**: React static website (CloudFront + S3)
 - **API**: API Gateway + Lambda (FastAPI)
-- **存储**: S3 (文件存储)
-- **搜索**: OpenSearch Serverless (向量搜索)
-- **队列**: SQS (异步任务处理)
-- **数据库**: DynamoDB (搜索状态管理)
-- **AI模型**: Amazon Bedrock (TwelveLabs Marengo)
+- **Storage**: S3 (file storage)
+- **Search**: OpenSearch Serverless (vector search)
+- **Queue**: SQS (asynchronous task processing)
+- **Database**: DynamoDB (search status management)
+- **AI Model**: Amazon Bedrock (TwelveLabs Marengo)
 
-## 前置要求
+## Prerequisites
 
-### 1. 环境准备
+### 1. Environment Setup
 ```bash
 # Node.js 18+
 node --version
@@ -32,17 +32,17 @@ npm install -g aws-cdk
 cdk --version
 ```
 
-### 2. AWS 权限配置
+### 2. AWS Credentials Configuration
 ```bash
-# 配置 AWS 凭证
+# Configure AWS credentials
 aws configure
 
-# 验证权限
+# Verify permissions
 aws sts get-caller-identity
 ```
 
-### 3. 必需的 AWS 服务权限
-- Amazon Bedrock (TwelveLabs Marengo 模型访问)
+### 3. Required AWS Service Permissions
+- Amazon Bedrock (TwelveLabs Marengo model access)
 - OpenSearch Serverless
 - Lambda
 - API Gateway
@@ -51,181 +51,181 @@ aws sts get-caller-identity
 - DynamoDB
 - SQS
 
-## 部署步骤
+## Deployment Steps
 
-### 1. 克隆项目
+### 1. Clone Project
 ```bash
 git clone <repository-url>
 cd aws-multimodal-embedding
 ```
 
-### 2. 配置服务前缀
-编辑 `config/settings.py`:
+### 2. Configure Service Prefix
+Edit `config/settings.py`:
 ```python
-SERVICE_PREFIX = "your-project-name"  # 修改为你的项目名
+SERVICE_PREFIX = "your-project-name"  # Change to your project name
 ```
 
-### 3. 安装依赖
+### 3. Install Dependencies
 ```bash
-# CDK 依赖
+# CDK dependencies
 cd infrastructure
 npm install
 
-# Python 依赖 (如果需要本地测试)
+# Python dependencies (if needed for local testing)
 pip install -r requirements.txt
 ```
 
-### 4. 部署基础设施
+### 4. Deploy Infrastructure
 ```bash
-# 在 infrastructure 目录下
+# In infrastructure directory
 export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-cdk bootstrap  # 首次部署需要
+cdk bootstrap  # Required for first deployment
 cdk deploy --require-approval never
 ```
 
-### 5. 上传前端文件
+### 5. Upload Frontend Files
 ```bash
-# 部署完成后，上传前端到 S3
+# After deployment, upload frontend to S3
 aws s3 sync frontend/ s3://your-project-name-frontend/ --delete
 ```
 
-## 配置说明
+## Configuration Details
 
-### 环境变量
-系统会自动设置以下环境变量：
-- `OPENSEARCH_ENDPOINT`: OpenSearch 集群端点
-- `OPENSEARCH_INDEX`: 索引名称 (默认: embeddings)
-- `SEARCH_TABLE_NAME`: DynamoDB 表名
-- `SEARCH_QUEUE_URL`: SQS 队列 URL
+### Environment Variables
+The system automatically sets the following environment variables:
+- `OPENSEARCH_ENDPOINT`: OpenSearch cluster endpoint
+- `OPENSEARCH_INDEX`: Index name (default: embeddings)
+- `SEARCH_TABLE_NAME`: DynamoDB table name
+- `SEARCH_QUEUE_URL`: SQS queue URL
 
-### 服务配置
-- **Lambda 超时**: 15分钟 (embedding 处理)
-- **Lambda 内存**: 1024MB
-- **SQS 可见性超时**: 900秒
-- **文件大小限制**: 10MB
-- **支持格式**: PNG, JPEG, JPG, WEBP, MP4, MOV
+### Service Configuration
+- **Lambda Timeout**: 15 minutes (embedding processing)
+- **Lambda Memory**: 1024MB
+- **SQS Visibility Timeout**: 900 seconds
+- **File Size Limit**: 10MB
+- **Supported Formats**: PNG, JPEG, JPG, WEBP, MP4, MOV
 
-## 功能特性
+## Features
 
-### 1. 多模态 Embedding
-- **图片**: 生成视觉 embedding
-- **视频**: 生成视觉、文本、音频三种 embedding
-- **文本**: 生成文本 embedding
+### 1. Multimodal Embedding
+- **Images**: Generate visual embeddings
+- **Videos**: Generate visual, text, and audio embeddings
+- **Text**: Generate text embeddings
 
-### 2. 搜索模式
-- **文件搜索**: 上传图片/视频搜索相似内容
-- **文本搜索**: 输入文本描述搜索相关内容
-- **视频搜索模式**: 视觉相似/语义相似/音频相似
+### 2. Search Modes
+- **File Search**: Upload images/videos to search for similar content
+- **Text Search**: Input text descriptions to search for related content
+- **Video Search Modes**: Visual similarity/Semantic similarity/Audio similarity
 
-### 3. 异步处理
-- 避免 CloudFront 超时
-- 实时状态更新
-- 后台队列处理
+### 3. Asynchronous Processing
+- Avoid CloudFront timeouts
+- Real-time status updates
+- Background queue processing
 
-## 使用指南
+## Usage Guide
 
-### 1. 文件上传
-1. 访问 CloudFront 域名
-2. 选择"文件上传"
-3. 上传图片或视频文件
-4. 系统自动生成 embedding
+### 1. File Upload
+1. Access CloudFront domain
+2. Select "File Upload"
+3. Upload image or video files
+4. System automatically generates embeddings
 
-### 2. 搜索功能
-1. 选择"异步搜索"
-2. 选择搜索类型：
-   - **文件搜索**: 上传文件查找相似内容
-   - **文本搜索**: 输入描述查找相关内容
-3. 对于视频文件，可选择搜索模式
-4. 查看搜索结果和相似度分数
+### 2. Search Functionality
+1. Select "Asynchronous Search"
+2. Choose search type:
+   - **File Search**: Upload files to find similar content
+   - **Text Search**: Input descriptions to find related content
+3. For video files, select search mode
+4. View search results and similarity scores
 
-## 故障排除
+## Troubleshooting
 
-### 1. 部署失败
+### 1. Deployment Failures
 ```bash
-# 检查 CDK 版本
+# Check CDK version
 cdk --version
 
-# 清理并重新部署
+# Clean and redeploy
 cdk destroy
 cdk deploy --require-approval never
 ```
 
-### 2. Embedding 处理失败
-- 检查文件格式和大小限制
-- 验证 Bedrock 模型访问权限
-- 查看 Lambda 日志：
+### 2. Embedding Processing Failures
+- Check file format and size limits
+- Verify Bedrock model access permissions
+- View Lambda logs:
 ```bash
 aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/your-project-name"
 ```
 
-### 3. 搜索无结果
-- 确认文件已成功处理 (检查 OpenSearch 索引)
-- 验证搜索参数
-- 检查 OpenSearch 集群状态
+### 3. No Search Results
+- Confirm files have been successfully processed (check OpenSearch index)
+- Verify search parameters
+- Check OpenSearch cluster status
 
-### 4. 前端访问问题
-- 确认 CloudFront 分发状态
-- 检查 S3 存储桶策略
-- 验证 API Gateway 端点
+### 4. Frontend Access Issues
+- Confirm CloudFront distribution status
+- Check S3 bucket policies
+- Verify API Gateway endpoints
 
-## 监控和日志
+## Monitoring and Logging
 
-### 1. CloudWatch 日志组
+### 1. CloudWatch Log Groups
 - `/aws/lambda/your-project-name-embedding`
 - `/aws/lambda/your-project-name-search-api`
 - `/aws/lambda/your-project-name-search-worker`
 
-### 2. 关键指标
-- Lambda 执行时间和错误率
-- SQS 队列��度
-- OpenSearch 查询性能
-- S3 存储使用量
+### 2. Key Metrics
+- Lambda execution time and error rates
+- SQS queue depth
+- OpenSearch query performance
+- S3 storage usage
 
-## 成本优化
+## Cost Optimization
 
-### 1. 资源配置
-- Lambda 内存根据实际需求调整
-- OpenSearch 实例类型优化
-- S3 生命周期策略
+### 1. Resource Configuration
+- Adjust Lambda memory based on actual needs
+- Optimize OpenSearch instance types
+- S3 lifecycle policies
 
-### 2. 使用建议
-- 合理控制文件大小
-- 定期清理临时文件
-- 监控 Bedrock 调用量
+### 2. Usage Recommendations
+- Control file sizes reasonably
+- Regular cleanup of temporary files
+- Monitor Bedrock API calls
 
-## 安全考虑
+## Security Considerations
 
-### 1. 访问控制
-- IAM 角色最小权限原则
-- API Gateway 访问控制
-- S3 存储桶策略
+### 1. Access Control
+- IAM roles with least privilege principle
+- API Gateway access control
+- S3 bucket policies
 
-### 2. 数据保护
-- 传输加密 (HTTPS)
-- 存储加密 (S3, OpenSearch)
-- 临时文件自动清理
+### 2. Data Protection
+- Encryption in transit (HTTPS)
+- Encryption at rest (S3, OpenSearch)
+- Automatic cleanup of temporary files
 
-## 扩展和定制
+## Extensions and Customization
 
-### 1. 添加新的文件格式
-修改 `backend/embedding/main.py` 中的文件类型检查
+### 1. Adding New File Formats
+Modify file type checks in `backend/embedding/main.py`
 
-### 2. 调整搜索算法
-修改 `backend/search_worker/main.py` 中的搜索逻辑
+### 2. Adjusting Search Algorithms
+Modify search logic in `backend/search_worker/main.py`
 
-### 3. 自定义前端界面
-修改 `frontend/` 目录下的 HTML/CSS/JS 文件
+### 3. Customizing Frontend Interface
+Modify HTML/CSS/JS files in `frontend/` directory
 
-## 技术支持
+## Technical Support
 
-如遇到问题，请检查：
-1. AWS 服务状态
-2. CloudWatch 日志
-3. 系统配置
-4. 网络连接
+If you encounter issues, please check:
+1. AWS service status
+2. CloudWatch logs
+3. System configuration
+4. Network connectivity
 
-## 版本信息
+## Version Information
 
-- **当前版本**: 1.0.0
-- **最后更新**: 2025-01-25
-- **兼容性**: AWS CDK v2, Node.js 18+, Python 3.11+
+- **Current Version**: 1.0.0
+- **Last Updated**: 2025-01-25
+- **Compatibility**: AWS CDK v2, Node.js 18+, Python 3.11+
