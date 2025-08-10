@@ -99,11 +99,51 @@ rm -rf $TEMP_DIR
 # 清理CloudFront缓存
 echo "🔄 清理CloudFront缓存..."
 DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$CLOUDFRONT_DOMAIN'].Id" --output text)
-if [ ! -z "$DISTRIBUTION_ID" ]; then
-    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" >/dev/null
-    echo "✅ CloudFront缓存清理已启动"
+if [ ! -z "$DISTRIBUTION_ID" ] && [ "$DISTRIBUTION_ID" != "None" ]; then
+    echo "📋 找到CloudFront分发ID: $DISTRIBUTION_ID"
+    
+    # 创建缓存失效请求
+    INVALIDATION_ID=$(aws cloudfront create-invalidation \
+        --distribution-id $DISTRIBUTION_ID \
+        --paths "/*" \
+        --query 'Invalidation.Id' \
+        --output text)
+    
+    if [ ! -z "$INVALIDATION_ID" ]; then
+        echo "✅ CloudFront缓存清理已启动 (ID: $INVALIDATION_ID)"
+        echo "⏳ 等待缓存清理完成..."
+        
+        # 等待缓存清理完成（最多等待5分钟）
+        WAIT_COUNT=0
+        MAX_WAIT=30  # 30次检查，每次10秒
+        
+        while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+            STATUS=$(aws cloudfront get-invalidation \
+                --distribution-id $DISTRIBUTION_ID \
+                --id $INVALIDATION_ID \
+                --query 'Invalidation.Status' \
+                --output text 2>/dev/null || echo "InProgress")
+            
+            if [ "$STATUS" = "Completed" ]; then
+                echo "✅ CloudFront缓存清理完成！"
+                break
+            fi
+            
+            echo "⏳ 缓存清理中... ($((WAIT_COUNT + 1))/$MAX_WAIT)"
+            sleep 10
+            WAIT_COUNT=$((WAIT_COUNT + 1))
+        done
+        
+        if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
+            echo "⚠️ 缓存清理超时，但已启动。请等待几分钟后访问页面。"
+        fi
+    else
+        echo "❌ 缓存清理启动失败"
+    fi
 else
-    echo "⚠️ 未找到CloudFront分发"
+    echo "⚠️ 未找到CloudFront分发或获取失败"
+    echo "🔍 尝试手动查找分发..."
+    aws cloudfront list-distributions --query 'DistributionList.Items[].{Id:Id,Domain:DomainName}' --output table
 fi
 
 cd ..

@@ -443,7 +443,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
                     's3_uri': source['s3_uri'],
                     'search_media_type': search_media_type,
                     'search_embedding_type': search_embedding_type,
-                    'embedding_type': target_embedding_type,
+                    'target_embedding_type': target_embedding_type,
                     'media_type': source.get('media_type', 'unknown'),
                     'file_type': source['file_type'],
                     'timestamp': source['timestamp'],
@@ -463,7 +463,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
         'search_info': {
             'search_media_type': hit['search_media_type'],
             'search_embedding_type': hit['search_embedding_type'],
-            'target_embedding_type': hit['embedding_type'],
+            'target_embedding_type': hit['target_embedding_type'],
             'target_media_type': hit['media_type']
         }
     } for hit in all_hits]
