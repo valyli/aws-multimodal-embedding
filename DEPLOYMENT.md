@@ -101,9 +101,24 @@ The system automatically sets the following environment variables:
 ### Service Configuration
 - **Lambda Timeout**: 15 minutes (embedding processing)
 - **Lambda Memory**: 1024MB
+- **Lambda Concurrency**: 1 (default, prevents parallel execution)
 - **SQS Visibility Timeout**: 900 seconds
 - **File Size Limit**: 10MB
 - **Supported Formats**: PNG, JPEG, JPG, WEBP, MP4, MOV
+
+### Lambda Concurrency Control
+The embedding Lambda function is configured with `batch_size=1` to process one file at a time. If you need to further limit concurrency due to API quota restrictions, you can modify the CDK configuration:
+
+```python
+# In infrastructure/stacks/cloudscape_stack.py
+embedding_function = _lambda.Function(
+    self, "EmbeddingFunction",
+    # ... other configurations
+    reserved_concurrent_executions=1  # Limit to 1 concurrent execution
+)
+```
+
+**Default behavior**: Without `reserved_concurrent_executions`, Lambda can scale up to account limits but SQS `batch_size=1` ensures sequential processing per Lambda instance.
 
 ## Features
 
@@ -153,10 +168,18 @@ cdk deploy --require-approval never
 ### 2. Embedding Processing Failures
 - Check file format and size limits
 - Verify Bedrock model access permissions
+- **Quota/Rate Limit Issues**: The system includes automatic retry with delay for quota-limited scenarios
 - View Lambda logs:
 ```bash
 aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/your-project-name"
 ```
+
+### 3. API Quota Management
+If you encounter Bedrock API quota limits:
+- The system automatically retries failed requests with delays
+- Failed messages move to a retry queue with 2-minute delay
+- After multiple failures, messages go to dead letter queue
+- Consider adjusting `reserved_concurrent_executions` to further limit parallel calls
 
 ### 3. No Search Results
 - Confirm files have been successfully processed (check OpenSearch index)

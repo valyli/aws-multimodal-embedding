@@ -101,9 +101,24 @@ aws s3 sync frontend/ s3://your-project-name-frontend/ --delete
 ### 服务配置
 - **Lambda 超时**: 15分钟 (embedding 处理)
 - **Lambda 内存**: 1024MB
+- **Lambda 并发数**: 1（默认，防止并行执行）
 - **SQS 可见性超时**: 900秒
 - **文件大小限制**: 10MB
 - **支持格式**: PNG, JPEG, JPG, WEBP, MP4, MOV
+
+### Lambda并发控制
+Embedding Lambda函数配置了`batch_size=1`来逐个处理文件。如果由于API配额限制需要进一步限制并发，可以修改CDK配置：
+
+```python
+# 在 infrastructure/stacks/cloudscape_stack.py 中
+embedding_function = _lambda.Function(
+    self, "EmbeddingFunction",
+    # ... 其他配置
+    reserved_concurrent_executions=1  # 限制为1个并发执行
+)
+```
+
+**默认行为**: 不设置`reserved_concurrent_executions`时，Lambda可以扩展到账户限制，但SQS的`batch_size=1`确保每个Lambda实例顺序处理。
 
 ## 功能特性
 
@@ -153,10 +168,18 @@ cdk deploy --require-approval never
 ### 2. Embedding 处理失败
 - 检查文件格式和大小限制
 - 验证 Bedrock 模型访问权限
+- **配额/速率限制问题**: 系统包含针对配额限制场景的自动延迟重试
 - 查看 Lambda 日志：
 ```bash
 aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/your-project-name"
 ```
+
+### 3. API配额管理
+如果遇到Bedrock API配额限制：
+- 系统自动延迟重试失败的请求
+- 失败消息转移到带2分钟延迟的重试队列
+- 多次失败后，消息进入死信队列
+- 考虑调整`reserved_concurrent_executions`进一步限制并行调用
 
 ### 3. 搜索无结果
 - 确认文件已成功处理 (检查 OpenSearch 索引)

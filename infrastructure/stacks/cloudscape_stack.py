@@ -105,6 +105,15 @@ class CloudscapeStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
         
+        # DynamoDB表 - Embedding状态跟踪
+        status_table = dynamodb.Table(
+            self, "EmbeddingStatusTable",
+            table_name=f"{SERVICE_PREFIX}-embedding-status",
+            partition_key=dynamodb.Attribute(name="s3_uri", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        
         # SQS队列处理搜索任务
         search_queue = sqs.Queue(
             self, "SearchQueue",
@@ -112,7 +121,37 @@ class CloudscapeStack(Stack):
             visibility_timeout=Duration.minutes(10)
         )
         
-        # Embedding处理Lambda
+        # Embedding处理队列和死信队列
+        embedding_dlq = sqs.Queue(
+            self, "EmbeddingDLQ",
+            queue_name=f"{SERVICE_PREFIX}-embedding-dlq",
+            retention_period=Duration.days(14)
+        )
+        
+        # 延迟重试队列（用于Quota限制重试）- 优化为45秒延迟
+        embedding_retry_queue = sqs.Queue(
+            self, "EmbeddingRetryQueue",
+            queue_name=f"{SERVICE_PREFIX}-embedding-retry-queue",
+            visibility_timeout=Duration.seconds(90),  # 减少到90秒
+            delivery_delay=Duration.seconds(45),  # 45秒延迟，适配1分钟2次quota
+            dead_letter_queue=sqs.DeadLetterQueue(
+                max_receive_count=3,  # 保持3次重试
+                queue=embedding_dlq
+            )
+        )
+        
+        embedding_queue = sqs.Queue(
+            self, "EmbeddingQueue",
+            queue_name=f"{SERVICE_PREFIX}-embedding-queue",
+            visibility_timeout=Duration.seconds(90),  # 减少到90秒
+            dead_letter_queue=sqs.DeadLetterQueue(
+                max_receive_count=2,  # 主队列重试2次后转到延迟队列
+                queue=embedding_retry_queue  # 失败后转到延迟队列
+            ),
+            receive_message_wait_time=Duration.seconds(20)
+        )
+        
+        # Embedding处理Lambda - 设置并发限制
         embedding_function = _lambda.Function(
             self, "EmbeddingFunction",
             function_name=f"{SERVICE_PREFIX}-embedding",
@@ -121,7 +160,8 @@ class CloudscapeStack(Stack):
             code=_lambda.Code.from_asset("../backend/embedding"),
             timeout=Duration.minutes(5),
             memory_size=1024,
-            layers=[opensearch_layer]
+            layers=[opensearch_layer],
+            reserved_concurrent_executions=1  # 限制并发为1，避免quota超限
         )
         
         # 搜索API Lambda - 快速返回搜索ID
@@ -218,9 +258,11 @@ class CloudscapeStack(Stack):
         lambda_function.add_environment("UPLOAD_BUCKET", upload_bucket.bucket_name)
         lambda_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         lambda_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        lambda_function.add_environment("STATUS_TABLE_NAME", status_table.table_name)
         
         embedding_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         embedding_function.add_environment("OPENSEARCH_INDEX", "embeddings")
+        embedding_function.add_environment("STATUS_TABLE_NAME", status_table.table_name)
         
         search_worker_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         search_worker_function.add_environment("OPENSEARCH_INDEX", "embeddings")
@@ -231,8 +273,15 @@ class CloudscapeStack(Stack):
         # 给DynamoDB和SQS授权
         search_table.grant_read_write_data(search_api_function)
         search_table.grant_read_write_data(search_worker_function)
+        status_table.grant_read_write_data(embedding_function)
+        status_table.grant_read_write_data(lambda_function)
         search_queue.grant_send_messages(search_api_function)
         search_queue.grant_consume_messages(search_worker_function)
+        
+        # Embedding队列授权
+        embedding_queue.grant_consume_messages(embedding_function)
+        embedding_retry_queue.grant_consume_messages(embedding_function)
+        embedding_dlq.grant_send_messages(embedding_function)
         
         # SQS触发器
         search_worker_function.add_event_source(
@@ -332,10 +381,28 @@ class CloudscapeStack(Stack):
         for func in [embedding_function, search_worker_function]:
             func.add_environment("BEDROCK_SERVICE_ROLE_ARN", bedrock_service_role.role_arn)
         
-        # S3触发器
+        # S3触发器改为发送到SQS队列
         upload_bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(embedding_function)
+            s3n.SqsDestination(embedding_queue)
+        )
+        
+        # SQS触发器处理embedding
+        embedding_function.add_event_source(
+            lambda_event_sources.SqsEventSource(
+                embedding_queue, 
+                batch_size=1,
+                max_batching_window=Duration.seconds(5)
+            )
+        )
+        
+        # 延迟重试队列也使用同一个Lambda处理
+        embedding_function.add_event_source(
+            lambda_event_sources.SqsEventSource(
+                embedding_retry_queue,
+                batch_size=1,
+                max_batching_window=Duration.seconds(5)
+            )
         )
         
         # 搜索API使用129秒超时，配置CORS支持直接访问

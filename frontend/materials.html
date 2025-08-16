@@ -27,6 +27,7 @@
         .status.ready { background: #d4edda; color: #155724; }
         .status.processing { background: #fff3cd; color: #856404; }
         .status.pending { background: #f8d7da; color: #721c24; }
+        .status.failed { background: #f8d7da; color: #721c24; }
         .loading { text-align: center; padding: 40px; color: #666; }
         .refresh-btn { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-bottom: 20px; }
         .refresh-btn:hover { background: #218838; }
@@ -124,7 +125,7 @@
             grid.innerHTML = '';
             
             try {
-                const response = await fetch(API_BASE + '/api/materials');
+                const response = await fetch(API_BASE + 'api/materials');
                 const data = await response.json();
                 
                 if (response.ok) {
@@ -178,9 +179,19 @@
                     mediaElement = `<div class="material-preview" style="display: flex; align-items: center; justify-content: center; background: #f8f9fa; border: 2px dashed #ddd;"><span style="font-size: 48px;">📄</span></div>`;
                 }
                 
-                const statusClass = material.hasEmbedding ? 'ready' : 'pending';
-                const statusText = material.hasEmbedding ? '✅ 已完成' : '⏳ 待处理';
+                const statusClass = getStatusClass(material);
+                const statusText = material.statusDisplay || (material.hasEmbedding ? '✅ 已完成' : '⏳ 待处理');
                 const materialType = isImage ? 'image' : isVideo ? 'video' : isAudio ? 'audio' : 'other';
+                
+                // 构建状态详情
+                let statusDetails = '';
+                if (material.retryCount > 0) {
+                    statusDetails += `<div style="font-size: 11px; color: #856404; margin-top: 3px;">重试次数: ${material.retryCount}</div>`;
+                }
+                if (material.lastError) {
+                    const shortError = material.lastError.length > 50 ? material.lastError.substring(0, 50) + '...' : material.lastError;
+                    statusDetails += `<div style="font-size: 11px; color: #dc3545; margin-top: 3px; cursor: pointer;" onclick="showErrorDetails('${material.key}', '${material.lastError.replace(/'/g, "\\'")}')">❌ ${shortError}</div>`;
+                }
                 
                 return `
                     <div class="material-card" data-type="${materialType}" data-status="${statusClass}">
@@ -202,7 +213,10 @@
                                     ''
                                 }
                             </div>
-                            <div class="status ${statusClass}">${statusText}</div>
+                            <div class="status ${statusClass}">
+                                ${statusText}
+                                ${statusDetails}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -255,6 +269,24 @@
             return `<div style="margin-top: 8px; font-size: 12px; color: #666;">📹 视频分段: ${segments.join(' | ')}</div>`;
         }
         
+        function getStatusClass(material) {
+            if (material.embeddingStatus) {
+                switch (material.embeddingStatus) {
+                    case 'completed': return 'ready';
+                    case 'processing': return 'processing';
+                    case 'retrying': return 'processing';
+                    case 'failed': return 'pending';
+                    case 'unsupported': return 'pending';
+                    default: return 'pending';
+                }
+            }
+            return material.hasEmbedding ? 'ready' : 'pending';
+        }
+        
+        function showErrorDetails(fileKey, errorMsg) {
+            alert(`文件: ${fileKey}\n\n错误详情:\n${errorMsg}`);
+        }
+        
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
@@ -279,7 +311,7 @@
             grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #007dbc; font-size: 18px; padding: 40px;">🗑️ 正在清理数据库，请稍候...</div>';
             
             try {
-                const response = await fetch(API_BASE + '/api/cleanup', {
+                const response = await fetch(API_BASE + 'api/cleanup', {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json'

@@ -4,10 +4,31 @@ import base64
 import uuid
 import os
 from datetime import datetime
+from decimal import Decimal
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 s3_client = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ.get('UPLOAD_BUCKET', 'multimodal-search-uploads')
+STATUS_TABLE_NAME = os.environ.get('STATUS_TABLE_NAME', 'multimodal-search-embedding-status')
 ALLOWED_TYPES = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov', 'wav', 'mp3', 'm4a']
+
+def get_embedding_status(s3_uri):
+    """
+    从DynamoDB获取embedding状态
+    """
+    try:
+        table = dynamodb.Table(STATUS_TABLE_NAME)
+        response = table.get_item(Key={'s3_uri': s3_uri})
+        return response.get('Item')
+    except Exception as e:
+        print(f"Failed to get status for {s3_uri}: {str(e)}")
+        return None
 
 def handler(event, context):
     """
@@ -113,6 +134,39 @@ def handler(event, context):
                         except:
                             pass
                     
+                    # 从DynamoDB获取状态信息
+                    s3_uri = f"s3://{BUCKET_NAME}/{key}"
+                    status_info = get_embedding_status(s3_uri)
+                    
+                    # 确定embedding状态
+                    if len(embeddings) > 0:
+                        embedding_status = 'completed'
+                        status_display = '✅ 已完成'
+                    elif status_info and status_info.get('status'):
+                        db_status = status_info['status']
+                        retry_count = status_info.get('retry_count', 0)
+                        if db_status == 'processing':
+                            embedding_status = 'processing'
+                            status_display = '🔄 处理中'
+                        elif db_status == 'retrying':
+                            embedding_status = 'retrying'
+                            status_display = f'⚠️ 重试中 ({retry_count}/5)'
+                        elif db_status == 'failed':
+                            embedding_status = 'failed'
+                            status_display = '❌ 失败'
+                        else:
+                            embedding_status = 'pending'
+                            status_display = '⏳ 待处理'
+                    else:
+                        # 检查文件类型是否支持
+                        file_ext = key.split('.')[-1].lower()
+                        if file_ext in ALLOWED_TYPES:
+                            embedding_status = 'pending'
+                            status_display = '⏳ 待处理'
+                        else:
+                            embedding_status = 'unsupported'
+                            status_display = '❌ 不支持'
+                    
                     materials.append({
                         'key': key,
                         'name': key.split('/')[-1],
@@ -122,7 +176,12 @@ def handler(event, context):
                         'embeddings': embeddings,
                         'hasEmbedding': len(embeddings) > 0,
                         'segmentCount': segment_count,
-                        'segmentCounts': segment_counts
+                        'segmentCounts': segment_counts,
+                        'embeddingStatus': embedding_status,
+                        'statusDisplay': status_display,
+                        'retryCount': status_info.get('retry_count', 0) if status_info else 0,
+                        'lastError': status_info.get('last_error') if status_info else None,
+                        'lastErrorTime': status_info.get('last_error_time') if status_info else None
                     })
             
             response_body = {
@@ -403,5 +462,5 @@ def handler(event, context):
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         },
-        'body': json.dumps(response_body)
+        'body': json.dumps(response_body, cls=DecimalEncoder)
     }

@@ -46,23 +46,25 @@
             </div>
         </div>
         
-        <input type="file" id="fileInput" class="file-input" accept=".png,.jpeg,.jpg,.webp,.mp4,.mov,.wav,.mp3,.m4a">
+        <input type="file" id="fileInput" class="file-input" accept=".png,.jpeg,.jpg,.webp,.mp4,.mov,.wav,.mp3,.m4a" multiple>
         
-        <div id="fileInfo" class="file-info" style="display: none;">
-            <strong>选中文件:</strong> <span id="fileName"></span><br>
-            <strong>文件大小:</strong> <span id="fileSize"></span><br>
-            <strong>文件类型:</strong> <span id="fileType"></span>
+        <div id="fileList" style="display: none;">
+            <h3>选中的文件:</h3>
+            <div id="fileItems"></div>
         </div>
         
-        <button id="uploadBtn" onclick="uploadFile()" disabled>上传文件</button>
+        <button id="uploadBtn" onclick="uploadFiles()" disabled>上传所有文件</button>
         
-        <div id="result" class="result" style="display: none;"></div>
+        <div id="uploadProgress" style="display: none;">
+            <h3>上传进度:</h3>
+            <div id="progressItems"></div>
+        </div>
     </div>
 
     <script>
         const API_BASE = '{{MAIN_API_ENDPOINT}}';
         const allowedTypes = ['png', 'jpeg', 'jpg', 'webp', 'mp4', 'mov', 'wav', 'mp3', 'm4a'];
-        let selectedFile = null;
+        let selectedFiles = [];
         
         const fileInput = document.getElementById('fileInput');
         const uploadArea = document.querySelector('.upload-area');
@@ -86,85 +88,102 @@
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFile(files[0]);
-            }
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
         });
         
         function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (file) {
-                handleFile(file);
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        }
+        
+        function handleFiles(files) {
+            selectedFiles = [];
+            const validFiles = [];
+            const errors = [];
+            
+            files.forEach(file => {
+                const ext = file.name.split('.').pop().toLowerCase();
+                
+                if (!allowedTypes.includes(ext)) {
+                    errors.push(`${file.name}: 不支持的文件类型`);
+                    return;
+                }
+                
+                if (file.size > 10 * 1024 * 1024) {
+                    errors.push(`${file.name}: 文件大小超过10MB`);
+                    return;
+                }
+                
+                validFiles.push(file);
+            });
+            
+            selectedFiles = validFiles;
+            
+            if (errors.length > 0) {
+                alert('以下文件有问题:\n' + errors.join('\n'));
+            }
+            
+            if (selectedFiles.length > 0) {
+                displayFileList();
+                uploadBtn.disabled = false;
+            } else {
+                document.getElementById('fileList').style.display = 'none';
+                uploadBtn.disabled = true;
             }
         }
         
-        function handleFile(file) {
-            const ext = file.name.split('.').pop().toLowerCase();
-            
-            if (!allowedTypes.includes(ext)) {
-                showResult(`不支持的文件类型。仅支持: ${allowedTypes.join(', ')}`, 'error');
-                return;
-            }
-            
-            // 检查文件大小（10MB限制）
-            if (file.size > 10 * 1024 * 1024) {
-                showResult('文件大小不能超过10MB，请选择较小的文件', 'error');
-                return;
-            }
-            
-            selectedFile = file;
-            
-            // 显示文件信息
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileSize').textContent = formatFileSize(file.size);
-            document.getElementById('fileType').textContent = file.type || '未知';
-            fileInfo.style.display = 'block';
-            uploadBtn.disabled = false;
-            
-            hideResult();
-        }
-        
-        async function uploadFile() {
-            if (!selectedFile) return;
+        async function uploadFiles() {
+            if (selectedFiles.length === 0) return;
             
             uploadBtn.disabled = true;
-            uploadBtn.textContent = '上传中...';
+            uploadBtn.textContent = `上传中... (0/${selectedFiles.length})`;
             
-            try {
-                // 转换文件为base64
-                const base64Data = await fileToBase64(selectedFile);
+            document.getElementById('uploadProgress').style.display = 'block';
+            const progressItems = document.getElementById('progressItems');
+            progressItems.innerHTML = '';
+            
+            let completed = 0;
+            
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const progressItem = createProgressItem(file.name, i);
+                progressItems.appendChild(progressItem);
                 
-                const response = await fetch(API_BASE + '/api/upload', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        file: base64Data,
-                        fileName: selectedFile.name,
-                        fileType: selectedFile.type
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    showResult(`
-                        <strong>上传成功！</strong><br>
-                        <strong>文件名:</strong> ${data.fileName}<br>
-                        <strong>S3 URI:</strong> <code>${data.s3Uri}</code><br>
-                        <strong>上传时间:</strong> ${new Date(data.uploadTime).toLocaleString()}
-                    `, 'success');
-                } else {
-                    showResult(`上传失败: ${data.error}`, 'error');
+                try {
+                    updateProgress(i, 'uploading', '上传中...');
+                    
+                    const base64Data = await fileToBase64(file);
+                    
+                    const response = await fetch(API_BASE + '/api/upload', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            file: base64Data,
+                            fileName: file.name,
+                            fileType: file.type
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        updateProgress(i, 'success', `上传成功 - ${data.fileName}`);
+                    } else {
+                        updateProgress(i, 'error', `上传失败: ${data.error}`);
+                    }
+                } catch (error) {
+                    updateProgress(i, 'error', `上传失败: ${error.message}`);
                 }
-            } catch (error) {
-                showResult(`上传失败: ${error.message}`, 'error');
-            } finally {
-                uploadBtn.disabled = false;
-                uploadBtn.textContent = '上传文件';
+                
+                completed++;
+                uploadBtn.textContent = `上传中... (${completed}/${selectedFiles.length})`;
             }
+            
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = '上传所有文件';
         }
         
         function fileToBase64(file) {
@@ -187,14 +206,58 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
         
-        function showResult(message, type) {
-            result.innerHTML = message;
-            result.className = `result ${type}`;
-            result.style.display = 'block';
+        function displayFileList() {
+            const fileItems = document.getElementById('fileItems');
+            fileItems.innerHTML = '';
+            
+            selectedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #007dbc;';
+                item.innerHTML = `
+                    <strong>${file.name}</strong><br>
+                    <small>大小: ${formatFileSize(file.size)} | 类型: ${file.type || '未知'}</small>
+                    <button onclick="removeFile(${index})" style="float: right; background: #dc3545; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer;">删除</button>
+                `;
+                fileItems.appendChild(item);
+            });
+            
+            document.getElementById('fileList').style.display = 'block';
         }
         
-        function hideResult() {
-            result.style.display = 'none';
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            if (selectedFiles.length > 0) {
+                displayFileList();
+            } else {
+                document.getElementById('fileList').style.display = 'none';
+                uploadBtn.disabled = true;
+            }
+        }
+        
+        function createProgressItem(fileName, index) {
+            const item = document.createElement('div');
+            item.id = `progress-${index}`;
+            item.style.cssText = 'padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #6c757d;';
+            item.innerHTML = `
+                <strong>${fileName}</strong><br>
+                <span id="status-${index}">等待中...</span>
+            `;
+            return item;
+        }
+        
+        function updateProgress(index, status, message) {
+            const item = document.getElementById(`progress-${index}`);
+            const statusSpan = document.getElementById(`status-${index}`);
+            
+            statusSpan.textContent = message;
+            
+            if (status === 'success') {
+                item.style.borderLeftColor = '#28a745';
+            } else if (status === 'error') {
+                item.style.borderLeftColor = '#dc3545';
+            } else if (status === 'uploading') {
+                item.style.borderLeftColor = '#007dbc';
+            }
         }
     </script>
 </body>

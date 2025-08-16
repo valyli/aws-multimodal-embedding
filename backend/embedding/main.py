@@ -10,6 +10,10 @@ from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 # 初始化客户端
 s3_client = boto3.client('s3')
 bedrock_client = boto3.client('bedrock-runtime')
+dynamodb = boto3.resource('dynamodb')
+
+# DynamoDB表名
+STATUS_TABLE_NAME = os.environ.get('STATUS_TABLE_NAME', 'multimodal-search-embedding-status')
 
 # 配置
 OPENSEARCH_ENDPOINT = os.environ.get('OPENSEARCH_ENDPOINT')
@@ -20,44 +24,93 @@ VECTOR_DIMENSION = 1024
 
 def handler(event, context):
     """
-    S3触发的Embedding处理Lambda
+    SQS触发的Embedding处理Lambda
     """
     try:
         # 初始化OpenSearch客户端
         opensearch_client = get_opensearch_client()
         create_index_if_not_exists(opensearch_client)
         
-        # 解析S3事件
-        for record in event['Records']:
-            bucket_name = record['s3']['bucket']['name']
-            object_key = record['s3']['object']['key']
-            s3_uri = f"s3://{bucket_name}/{object_key}"
+        # 解析SQS消息中的S3事件
+        print(f"Received {len(event['Records'])} SQS records")
+        for sqs_record in event['Records']:
+            print(f"Processing SQS record: {sqs_record.get('messageId', 'unknown')}")
+            print(f"SQS attributes: {sqs_record.get('attributes', {})}")
+            # SQS消息体包含S3事件
+            s3_event = json.loads(sqs_record['body'])
             
-            print(f"Processing file: {s3_uri}")
+            # 处理S3事件中的每个记录
+            print(f"S3 event contains {len(s3_event['Records'])} records")
+            for s3_record in s3_event['Records']:
+                bucket_name = s3_record['s3']['bucket']['name']
+                object_key = s3_record['s3']['object']['key']
+                s3_uri = f"s3://{bucket_name}/{object_key}"
+                
+                print(f"Processing file from SQS: {s3_uri}")
+                print(f"S3 event type: {s3_record.get('eventName', 'unknown')}")
+                print(f"S3 event time: {s3_record.get('eventTime', 'unknown')}")
             
-            # 跳过Bedrock输出文件
-            if 'bedrock-outputs/' in object_key or 'temp/' in object_key:
-                print(f"Skipping Bedrock output or temp file: {object_key}")
-                continue
-            
-            # 判断文件类型
-            file_ext = object_key.split('.')[-1].lower()
-            
-            if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
-                # 图片文件 - 使用Marengo模型
-                embedding = get_embedding_from_marengo('image', s3_uri, bucket_name)
-                store_embedding(opensearch_client, 'image', s3_uri, embedding, file_ext)
-            elif file_ext in ['mp4', 'mov']:
-                # 视频文件 - 使用Marengo模型
-                embedding = get_embedding_from_marengo('video', s3_uri, bucket_name)
-                store_embedding(opensearch_client, 'video', s3_uri, embedding, file_ext)
-            elif file_ext in ['wav', 'mp3', 'm4a']:
-                # 音频文件 - 使用Marengo模型的audio功能
-                embedding = get_embedding_from_marengo('audio', s3_uri, bucket_name)
-                store_embedding(opensearch_client, 'audio', s3_uri, embedding, file_ext)
-            else:
-                print(f"Unsupported file type: {file_ext}")
-                continue
+                # 跳过Bedrock输出文件
+                if 'bedrock-outputs/' in object_key or 'temp/' in object_key:
+                    print(f"SKIPPING Bedrock output or temp file: {object_key}")
+                    continue
+                
+                print(f"File will be processed: {object_key}")
+                
+                # 更新状态为处理中
+                update_embedding_status(s3_uri, 'processing', retry_count=int(sqs_record.get('attributes', {}).get('ApproximateReceiveCount', '1')))
+                
+                # 判断文件类型
+                file_ext = object_key.split('.')[-1].lower()
+                print(f"Detected file extension: {file_ext}")
+                
+                try:
+                    if file_ext in ['png', 'jpeg', 'jpg', 'webp']:
+                        # 图片文件 - 使用Marengo模型
+                        print(f"Processing IMAGE file: {s3_uri}")
+                        embedding = get_embedding_from_marengo('image', s3_uri, bucket_name)
+                        store_embedding(opensearch_client, 'image', s3_uri, embedding, file_ext)
+                    elif file_ext in ['mp4', 'mov']:
+                        # 视频文件 - 使用Marengo模型
+                        print(f"Processing VIDEO file: {s3_uri}")
+                        embedding = get_embedding_from_marengo('video', s3_uri, bucket_name)
+                        store_embedding(opensearch_client, 'video', s3_uri, embedding, file_ext)
+                    elif file_ext in ['wav', 'mp3', 'm4a']:
+                        # 音频文件 - 使用Marengo模型的audio功能
+                        print(f"Processing AUDIO file: {s3_uri}")
+                        embedding = get_embedding_from_marengo('audio', s3_uri, bucket_name)
+                        store_embedding(opensearch_client, 'audio', s3_uri, embedding, file_ext)
+                    else:
+                        print(f"UNSUPPORTED file type: {file_ext} for {s3_uri}")
+                        continue
+                        
+                    print(f"SUCCESS: Completed processing {s3_uri}")
+                    # 更新状态为已完成
+                    update_embedding_status(s3_uri, 'completed', clear_error=True)
+                    
+                except Exception as file_error:
+                    error_msg = str(file_error)
+                    retry_count = int(sqs_record.get('attributes', {}).get('ApproximateReceiveCount', '1'))
+                    print(f"Error processing file {s3_uri}: {error_msg}")
+                    print(f"SQS message attributes: {sqs_record.get('attributes', {})}")
+                    print(f"Current retry count: {retry_count}")
+                    
+                    # 更新错误状态
+                    update_embedding_status(s3_uri, 'retrying', retry_count=retry_count, error_msg=error_msg)
+                    
+                    # 检查是否是Quota限制错误
+                    if any(keyword in error_msg.lower() for keyword in ['throttl', 'quota', 'limit', 'rate']):
+                        print(f"QUOTA/RATE LIMIT detected for {s3_uri}, retry #{retry_count}. Will retry via SQS redrive policy.")
+                        print(f"Error type: ThrottlingException - Will retry after delay")
+                        # 对于quota错误，让SQS自动重试
+                        raise file_error
+                    else:
+                        print(f"NON-QUOTA error for {s3_uri}, retry #{retry_count}: {error_msg}")
+                        # 对于非quota错误，也让SQS重试，但记录更多信息
+                        print(f"Error details: {type(file_error).__name__}: {error_msg}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        raise file_error
             
         return {
             'statusCode': 200,
@@ -65,13 +118,12 @@ def handler(event, context):
         }
         
     except Exception as e:
-        print(f"Error processing embedding: {str(e)}")
+        print(f"FATAL ERROR in embedding handler: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
-        }
+        print(f"Event that caused error: {json.dumps(event, default=str)}")
+        # 对于handler级别的错误，也要抛出异常让SQS重试
+        raise e
 
 def get_opensearch_client():
     """初始化OpenSearch客户端"""
@@ -331,3 +383,32 @@ def store_embedding(client, media_type, s3_uri, embedding_data, file_type):
     
     print(f"Stored {len(responses)} embedding segments for {s3_uri}")
     return responses
+
+def update_embedding_status(s3_uri, status, retry_count=0, error_msg=None, clear_error=False):
+    """
+    更新embedding状态到DynamoDB
+    """
+    try:
+        table = dynamodb.Table(STATUS_TABLE_NAME)
+        
+        # 使用s3_uri作为主键
+        item = {
+            's3_uri': s3_uri,
+            'status': status,
+            'retry_count': retry_count,
+            'last_updated': datetime.now().isoformat()
+        }
+        
+        if clear_error:
+            item['last_error'] = None
+            item['last_error_time'] = None
+        elif error_msg:
+            item['last_error'] = error_msg[:1000]  # 限制错误消息长度
+            item['last_error_time'] = datetime.now().isoformat()
+        
+        table.put_item(Item=item)
+        print(f"Updated status for {s3_uri}: {status} (retry: {retry_count})")
+        
+    except Exception as e:
+        print(f"Failed to update status for {s3_uri}: {str(e)}")
+        # 不抛出异常，避免影响主流程
