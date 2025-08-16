@@ -507,11 +507,11 @@
                     
                     let mediaElement;
                     if (isVideo) {
-                        mediaElement = `<video controls style="max-width: 150px; max-height: 150px; border-radius: 5px;"><source src="${result.image_url}" type="video/${fileType === 'mov' ? 'quicktime' : fileType}"></video>`;
+                        mediaElement = `<video controls style="width: 320px; height: 240px; border-radius: 5px;"><source src="${result.image_url}" type="video/${fileType === 'mov' ? 'quicktime' : fileType}"></video>`;
                     } else if (isAudio) {
-                        mediaElement = `<div style="width: 150px; text-align: center; padding: 20px; border: 2px dashed #ddd; border-radius: 5px;"><div style="font-size: 24px; margin-bottom: 10px;">🎧</div><audio controls style="width: 100%;"><source src="${result.image_url}" type="audio/${fileType === 'mp3' ? 'mpeg' : fileType === 'm4a' ? 'mp4' : fileType}"></audio></div>`;
+                        mediaElement = `<div style="width: 320px; text-align: center; padding: 20px; border: 2px dashed #ddd; border-radius: 5px;"><div style="font-size: 24px; margin-bottom: 10px;">🎧</div><audio controls style="width: 100%;"><source src="${result.image_url}" type="audio/${fileType === 'mp3' ? 'mpeg' : fileType === 'm4a' ? 'mp4' : fileType}"></audio></div>`;
                     } else {
-                        mediaElement = `<img src="${result.image_url}" alt="相似图片" style="max-width: 150px; max-height: 150px; border-radius: 5px;">`;
+                        mediaElement = `<img src="${result.image_url}" alt="相似图片" style="max-width: 320px; max-height: 240px; border-radius: 5px;">`;
                     }
                     
                     // 构建时间段信息
