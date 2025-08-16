@@ -507,7 +507,30 @@
                     
                     let mediaElement;
                     if (isVideo) {
-                        mediaElement = `<video controls style="width: 320px; height: 240px; border-radius: 5px;"><source src="${result.image_url}" type="video/${fileType === 'mov' ? 'quicktime' : fileType}"></video>`;
+                        const hasSegmentInfo = result.segment_info && 
+                            result.segment_info.start_time !== null && 
+                            result.segment_info.start_time !== undefined && 
+                            !isNaN(result.segment_info.start_time);
+                        
+                        const videoId = `video_${result.s3_uri.split('/').pop().replace('.', '_')}_${Math.random().toString(36).substr(2, 9)}`;
+                        
+                        mediaElement = `
+                            <div style="width: 320px;">
+                                ${hasSegmentInfo ? `
+                                <div style="margin-bottom: 8px;">
+                                    <button onclick="playSegment('${videoId}', ${result.segment_info.start_time}, ${result.segment_info.end_time})" 
+                                            style="background: #007bff; color: white; border: none; padding: 4px 8px; border-radius: 3px; font-size: 12px; margin-right: 5px; cursor: pointer;">
+                                        🎬 播放片段
+                                    </button>
+                                    <button onclick="playFull('${videoId}')" 
+                                            style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; font-size: 12px; cursor: pointer;">
+                                        📹 播放全部
+                                    </button>
+                                </div>` : ''}
+                                <video id="${videoId}" controls style="width: 320px; height: 240px; border-radius: 5px;">
+                                    <source src="${result.image_url}" type="video/${fileType === 'mov' ? 'quicktime' : fileType}">
+                                </video>
+                            </div>`;
                     } else if (isAudio) {
                         mediaElement = `<div style="width: 320px; text-align: center; padding: 20px; border: 2px dashed #ddd; border-radius: 5px;"><div style="font-size: 24px; margin-bottom: 10px;">🎧</div><audio controls style="width: 100%;"><source src="${result.image_url}" type="audio/${fileType === 'mp3' ? 'mpeg' : fileType === 'm4a' ? 'mp4' : fileType}"></audio></div>`;
                     } else {
@@ -554,6 +577,36 @@
                 'audio_embedding': '🎧 音频'
             };
             return `${typeMap[searchType] || searchType} → ${typeMap[targetType] || targetType}`;
+        }
+        
+        function playSegment(videoId, startTime, endTime) {
+            const video = document.getElementById(videoId);
+            if (video) {
+                video.currentTime = startTime;
+                video.play();
+                
+                // 清除之前的监听器
+                video.removeEventListener('timeupdate', video._segmentHandler);
+                
+                // 添加片段结束监听
+                video._segmentHandler = function() {
+                    if (video.currentTime >= endTime) {
+                        video.pause();
+                        video.removeEventListener('timeupdate', video._segmentHandler);
+                    }
+                };
+                video.addEventListener('timeupdate', video._segmentHandler);
+            }
+        }
+        
+        function playFull(videoId) {
+            const video = document.getElementById(videoId);
+            if (video) {
+                // 清除片段监听器
+                video.removeEventListener('timeupdate', video._segmentHandler);
+                video.currentTime = 0;
+                video.play();
+            }
         }
         
         function showStatus(message, type) {
