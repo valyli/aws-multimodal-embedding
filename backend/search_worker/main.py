@@ -452,7 +452,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
     
     # 按分数排序并返回前top_k个结果
     results.sort(key=lambda x: x['score'], reverse=True)
-    all_hits = results[:top_k]
+    all_hits = results  # [:top_k]
     
     return [{
         'score': hit['score'],
