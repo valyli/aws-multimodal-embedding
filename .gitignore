@@ -39,3 +39,4 @@ venv/
 
 # AWS
 .aws/
+infrastructure/outputs.json

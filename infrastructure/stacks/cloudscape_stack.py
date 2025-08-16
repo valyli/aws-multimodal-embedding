@@ -217,6 +217,7 @@ class CloudscapeStack(Stack):
         # 为Lambda添加环境变量
         lambda_function.add_environment("UPLOAD_BUCKET", upload_bucket.bucket_name)
         lambda_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
+        lambda_function.add_environment("OPENSEARCH_INDEX", "embeddings")
         
         embedding_function.add_environment("OPENSEARCH_ENDPOINT", opensearch_collection.attr_collection_endpoint)
         embedding_function.add_environment("OPENSEARCH_INDEX", "embeddings")

@@ -30,6 +30,13 @@
         .loading { text-align: center; padding: 40px; color: #666; }
         .refresh-btn { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-bottom: 20px; }
         .refresh-btn:hover { background: #218838; }
+        .cleanup-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .cleanup-modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 400px; border-radius: 8px; text-align: center; }
+        .cleanup-modal h3 { color: #dc3545; margin-top: 0; }
+        .cleanup-modal ul { text-align: left; margin: 20px 0; }
+        .cleanup-modal button { margin: 10px 5px; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .cleanup-cancel { background: #6c757d; color: white; }
+        .cleanup-confirm { background: #dc3545; color: white; }
         .filter-bar { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
         .filter-bar select { padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; }
     </style>
@@ -47,6 +54,7 @@
         <p>查看所有上传的素材文件及其embedding生成状态</p>
         
         <button class="refresh-btn" onclick="loadMaterials()">🔄 刷新</button>
+        <button class="refresh-btn" onclick="confirmCleanup()" style="background: #dc3545; margin-left: 10px;">🗑️ 清库</button>
         
         <div class="filter-bar">
             <label>筛选状态：</label>
@@ -85,6 +93,22 @@
         </div>
         
         <div class="materials-grid" id="materialsGrid">
+        </div>
+    </div>
+
+    <!-- 清库确认对话框 -->
+    <div id="cleanupModal" class="cleanup-modal">
+        <div class="cleanup-modal-content">
+            <h3>⚠️ 危险操作确认</h3>
+            <p>此操作将永久删除以下数据：</p>
+            <ul>
+                <li>• 所有上传的文件 (S3)</li>
+                <li>• 所有embedding数据 (OpenSearch)</li>
+                <li>• 所有搜索记录 (DynamoDB)</li>
+            </ul>
+            <p style="color: #dc3545; font-weight: bold;">此操作不可撤销！</p>
+            <button class="cleanup-cancel" onclick="closeCleanupModal()">取消</button>
+            <button class="cleanup-confirm" onclick="executeCleanup()">确认清库</button>
         </div>
     </div>
 
@@ -237,6 +261,54 @@
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function confirmCleanup() {
+            document.getElementById('cleanupModal').style.display = 'block';
+        }
+        
+        function closeCleanupModal() {
+            document.getElementById('cleanupModal').style.display = 'none';
+        }
+        
+        async function executeCleanup() {
+            const modal = document.getElementById('cleanupModal');
+            const grid = document.getElementById('materialsGrid');
+            
+            modal.style.display = 'none';
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #007dbc; font-size: 18px; padding: 40px;">🗑️ 正在清理数据库，请稍候...</div>';
+            
+            try {
+                const response = await fetch(API_BASE + '/api/cleanup', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #28a745; font-size: 18px; padding: 40px;">✅ 清库完成！所有数据已清理干净</div>';
+                    // 3秒后刷新页面
+                    setTimeout(() => {
+                        loadMaterials();
+                    }, 3000);
+                } else {
+                    const errorMsg = result.error || result.message || '未知错误';
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545; font-size: 16px; padding: 40px;">❌ 清库失败: ${errorMsg}</div>`;
+                }
+            } catch (error) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545; font-size: 16px; padding: 40px;">❌ 清库失败: ${error.message}</div>`;
+            }
+        }
+        
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('cleanupModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
         }
         
         document.addEventListener('DOMContentLoaded', loadMaterials);
