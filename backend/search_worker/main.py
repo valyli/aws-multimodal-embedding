@@ -417,7 +417,7 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
                         ]
                     }
                 },
-                "_source": ["s3_uri", "file_type", "timestamp", "media_type"]
+                "_source": ["s3_uri", "file_type", "timestamp", "media_type", "segment_index", "start_time", "end_time", "duration"]
             }
             
             print(f"Searching for {search_embedding_type} with {target_embedding_type} in OpenSearch index: {OPENSEARCH_INDEX}")
@@ -447,7 +447,11 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
                     'media_type': source.get('media_type', 'unknown'),
                     'file_type': source['file_type'],
                     'timestamp': source['timestamp'],
-                    'image_url': image_url
+                    'image_url': image_url,
+                    'segment_index': source.get('segment_index'),
+                    'start_time': source.get('start_time'),
+                    'end_time': source.get('end_time'),
+                    'duration': source.get('duration')
                 })
     
     # 按分数排序并返回前top_k个结果
@@ -460,6 +464,12 @@ def search_similar_embeddings(client, query_embedding, embedding_field, search_m
         'file_type': hit['file_type'],
         'timestamp': hit['timestamp'],
         'image_url': hit['image_url'],
+        'segment_info': {
+            'segment_index': hit.get('segment_index'),
+            'start_time': hit.get('start_time'),
+            'end_time': hit.get('end_time'),
+            'duration': hit.get('duration')
+        },
         'search_info': {
             'search_media_type': hit['search_media_type'],
             'search_embedding_type': hit['search_embedding_type'],

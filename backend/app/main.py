@@ -76,6 +76,8 @@ def handler(event, context):
                     
                     # 检查OpenSearch中的embedding状态
                     embeddings = []
+                    segment_count = 0
+                    segment_counts = {'visual': 0, 'text': 0, 'audio': 0}
                     if opensearch_endpoint:
                         try:
                             s3_uri = f"s3://{BUCKET_NAME}/{key}"
@@ -83,17 +85,30 @@ def handler(event, context):
                                 index='embeddings',
                                 body={
                                     'query': {'term': {'s3_uri': s3_uri}},
-                                    'size': 1
+                                    'size': 100
                                 }
                             )
                             
-                            if search_result['hits']['total']['value'] > 0:
-                                doc = search_result['hits']['hits'][0]['_source']
-                                if 'visual_embedding' in doc:
+                            total_hits = search_result['hits']['total']['value']
+                            segment_count = total_hits
+                            
+                            if total_hits > 0:
+                                # 统计各类型embedding的数量
+                                for hit in search_result['hits']['hits']:
+                                    doc = hit['_source']
+                                    if 'visual_embedding' in doc:
+                                        segment_counts['visual'] += 1
+                                    if 'text_embedding' in doc:
+                                        segment_counts['text'] += 1
+                                    if 'audio_embedding' in doc:
+                                        segment_counts['audio'] += 1
+                                
+                                # 设置可用的embedding类型
+                                if segment_counts['visual'] > 0:
                                     embeddings.append('🖼️ 视觉')
-                                if 'text_embedding' in doc:
+                                if segment_counts['text'] > 0:
                                     embeddings.append('📝 文本')
-                                if 'audio_embedding' in doc:
+                                if segment_counts['audio'] > 0:
                                     embeddings.append('🎧 音频')
                         except:
                             pass
@@ -105,7 +120,9 @@ def handler(event, context):
                         'lastModified': obj['LastModified'].isoformat(),
                         'url': file_url,
                         'embeddings': embeddings,
-                        'hasEmbedding': len(embeddings) > 0
+                        'hasEmbedding': len(embeddings) > 0,
+                        'segmentCount': segment_count,
+                        'segmentCounts': segment_counts
                     })
             
             response_body = {

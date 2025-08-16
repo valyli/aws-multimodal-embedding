@@ -124,7 +124,11 @@ def create_index_if_not_exists(client):
                     's3_uri': {'type': 'keyword'},
                     'media_type': {'type': 'keyword'},
                     'file_type': {'type': 'keyword'},
-                    'timestamp': {'type': 'date'}
+                    'timestamp': {'type': 'date'},
+                    'segment_index': {'type': 'integer'},
+                    'start_time': {'type': 'float'},
+                    'end_time': {'type': 'float'},
+                    'duration': {'type': 'float'}
                 }
             }
         }
@@ -223,22 +227,19 @@ def get_embedding_from_marengo(media_type, s3_uri, bucket_name):
                             output_json = json.loads(output_resp["Body"].read().decode("utf-8"))
                             print("output_json", output_json)
                             # 处理不同媒体类型的embedding
-                            embeddings = {}
                             if media_type == "video":
-                                for item in output_json["data"]:
-                                    if item["embeddingOption"] == "visual-image":
-                                        embeddings["visual_embedding"] = item["embedding"]
-                                    elif item["embeddingOption"] == "visual-text":
-                                        embeddings["text_embedding"] = item["embedding"]
-                                    elif item["embeddingOption"] == "audio":
-                                        embeddings["audio_embedding"] = item["embedding"]
+                                # 视频文件：返回所有时间段的embedding数据
+                                return output_json["data"]
                             elif media_type == "audio":
-                                embeddings["audio_embedding"] = output_json["data"][0]["embedding"]
+                                # 音频文件：返回所有时间段的embedding数据
+                                return output_json["data"]
                             elif media_type == "image":
-                                embeddings["visual_embedding"] = output_json["data"][0]["embedding"]
+                                # 图片文件：只有一个embedding
+                                return output_json["data"]
                             elif media_type == "text":
-                                embeddings["text_embedding"] = output_json["data"][0]["embedding"]
-                            return embeddings
+                                # 文本：只有一个embedding
+                                return output_json["data"]
+                            return output_json["data"]
                         except Exception as s3_error:
                             print(f"Failed to read output.json from path: {output_key}")
                             raise s3_error
@@ -280,27 +281,53 @@ def extract_s3_uri(s3_uri):
 
 def store_embedding(client, media_type, s3_uri, embedding_data, file_type):
     """
-    存储embedding到OpenSearch（统一向量空间）
+    存储embedding到OpenSearch（支持多时间段）
     """
-    document = {
-        's3_uri': s3_uri,
-        'media_type': media_type,
-        'file_type': file_type,
-        'timestamp': datetime.now().isoformat()
-    }
+    responses = []
     
-    # 存储不同类型的embedding
-    if 'visual_embedding' in embedding_data:
-        document['visual_embedding'] = embedding_data['visual_embedding']
-    if 'text_embedding' in embedding_data:
-        document['text_embedding'] = embedding_data['text_embedding']
-    if 'audio_embedding' in embedding_data:
-        document['audio_embedding'] = embedding_data['audio_embedding']
+    # 处理多个时间段的embedding数据
+    for i, item in enumerate(embedding_data):
+        document = {
+            's3_uri': s3_uri,
+            'media_type': media_type,
+            'file_type': file_type,
+            'timestamp': datetime.now().isoformat(),
+            'segment_index': i,  # 添加段落索引
+        }
+        
+        # 添加时间信息（如果有）
+        if 'startSec' in item and item['startSec'] is not None:
+            document['start_time'] = item['startSec']
+        if 'endSec' in item and item['endSec'] is not None:
+            document['end_time'] = item['endSec']
+            # 计算duration
+            if 'startSec' in item and item['startSec'] is not None:
+                document['duration'] = item['endSec'] - item['startSec']
+            
+        # 根据媒体类型和embeddingOption存储对应的embedding
+        if media_type == "video":
+            embedding_option = item.get('embeddingOption')
+            if embedding_option == 'visual-image':
+                document['visual_embedding'] = item['embedding']
+            elif embedding_option == 'visual-text':
+                document['text_embedding'] = item['embedding']
+            elif embedding_option == 'audio':
+                document['audio_embedding'] = item['embedding']
+        elif media_type == "audio":
+            document['audio_embedding'] = item['embedding']
+        elif media_type == "image":
+            document['visual_embedding'] = item['embedding']
+        elif media_type == "text":
+            document['text_embedding'] = item['embedding']
+        
+        # 存储到OpenSearch
+        response = client.index(
+            index=OPENSEARCH_INDEX,
+            body=document
+        )
+        responses.append(response)
+        
+        print(f"Stored embedding segment {i} for {s3_uri} (option: {item.get('embeddingOption', 'N/A')})")
     
-    response = client.index(
-        index=OPENSEARCH_INDEX,
-        body=document
-    )
-    
-    print(f"Stored embeddings for {s3_uri}: {response}")
-    return response
+    print(f"Stored {len(responses)} embedding segments for {s3_uri}")
+    return responses
